@@ -1,0 +1,91 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - depguard
+    - errorlint
+    - forbidigo
+    - gosec
+    - revive
+    - testpackage
+    - wrapcheck
+  settings:
+    wrapcheck:
+      # Errors from vigie's own packages already carry the final one-line message and hint;
+      # wrapping them again would only repeat context.
+      ignore-package-globs:
+        - github.com/sgaunet/vigie/*
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: stdout belongs to cmd/vigie and internal/render; write to an io.Writer instead
+        - pattern: ^InsecureSkipVerify$
+          msg: certificate verification is never skipped; use SSL_CERT_FILE for a custom CA
+    depguard:
+      rules:
+        flag:
+          files:
+            - $all
+            - "!$test"
+            - "!**/internal/cli/**"
+            - "!**/cmd/vigie/**"
+          deny:
+            - pkg: flag
+              desc: flag parsing lives in internal/cli (Principle IV)
+        http:
+          files:
+            - $all
+            - "!$test"
+            - "!**/internal/gitlab/**"
+          deny:
+            - pkg: net/http
+              desc: HTTP lives in internal/gitlab
+        exec:
+          files:
+            - $all
+            - "!$test"
+            - "!**/internal/repo/**"
+            - "!**/internal/token/**"
+          deny:
+            - pkg: os/exec
+              desc: subprocesses live in internal/repo and internal/token
+        names:
+          files:
+            - $all
+          deny:
+            - pkg: github.com/sgaunet/vigie/utils
+              desc: name packages for their domain
+            - pkg: github.com/sgaunet/vigie/internal/utils
+              desc: name packages for their domain
+            - pkg: github.com/sgaunet/vigie/internal/helpers
+              desc: name packages for their domain
+            - pkg: github.com/sgaunet/vigie/internal/common
+              desc: name packages for their domain
+            - pkg: github.com/sgaunet/vigie/internal/base
+              desc: name packages for their domain
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: (cmd/vigie/|internal/render/)
+        linters: [forbidigo]
+        text: fmt\.Print
+      # main only maps errors to exit codes; context is added where they are created.
+      - path: cmd/vigie/
+        linters: [wrapcheck]
+      # Test helpers pass errors through untouched, read their own fixtures, run the built
+      # binary and use fake tokens.
+      - path: _test\.go
+        linters: [wrapcheck]
+      - path: _test\.go
+        linters: [gosec]
+        text: (G101|G204|G304)
+      # git and token_command are run as argv, without a shell, by design.
+      - path: internal/(repo|token)/
+        linters: [gosec]
+        text: G204
+      # The config file path is the user's own choice (VIGIE_CONFIG, XDG, HOME).
+      - path: internal/config/file\.go
+        linters: [gosec]
+        text: G304

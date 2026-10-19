@@ -1,0 +1,39 @@
+version: "3"
+
+vars:
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo none
+  DATE:
+    sh: date -u +%Y-%m-%dT%H:%M:%SZ
+
+tasks:
+  build:
+    desc: Build a static binary into bin/vigie
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      - go build -trimpath -ldflags "-s -w -X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}" -o bin/vigie ./cmd/vigie
+
+  test:
+    desc: Run every test twice with the race detector
+    env:
+      CGO_ENABLED: "1"
+    cmds:
+      - go test -count=2 -race ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  snapshot:
+    desc: Build a local release with goreleaser (no publish)
+    cmds:
+      - goreleaser release --snapshot --clean
+
+  release:
+    desc: Publish a release with goreleaser
+    cmds:
+      - goreleaser release --clean

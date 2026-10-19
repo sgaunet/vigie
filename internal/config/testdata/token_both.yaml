@@ -1,0 +1,4 @@
+hosts:
+  gitlab.com:
+    token_env: MY_TOKEN
+    token_command: ["pass", "show", "gitlab"]

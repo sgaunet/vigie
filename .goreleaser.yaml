@@ -1,0 +1,75 @@
+version: 2
+
+project_name: vigie
+
+# vigie users usually export GITLAB_TOKEN; releases always go to GitHub.
+force_token: github
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: vigie
+    main: ./cmd/vigie
+    binary: vigie
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: vigie
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  algorithm: sha256
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+changelog:
+  sort: asc
+
+release:
+  github:
+    owner: sgaunet
+    name: vigie
+
+homebrew_casks:
+  - name: vigie
+    ids:
+      - vigie
+    homepage: https://github.com/sgaunet/vigie
+    description: One-line status of the GitLab project behind your git clone
+    license: MIT
+    directory: Casks
+    binaries:
+      - vigie
+    commit_author:
+      name: sgaunet
+      email: 1552102+sgaunet@users.noreply.github.com
+    repository:
+      owner: sgaunet
+      name: homebrew-tools
+      # Token with 'repo' scope, to push to the tap repository.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    # Strip the macOS quarantine attribute so Gatekeeper does not block the unsigned binary.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/vigie"]
+          end

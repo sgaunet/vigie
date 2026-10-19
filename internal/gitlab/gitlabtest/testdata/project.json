@@ -1,0 +1,19 @@
+{
+  "id": 42,
+  "path_with_namespace": "group/app",
+  "default_branch": "main",
+  "archived": false,
+  "branches": [
+    {"name": "main", "days_ago": 1},
+    {"name": "feature", "days_ago": 10},
+    {"name": "old", "days_ago": 400}
+  ],
+  "running": 2,
+  "pending": 1,
+  "pipelines": [
+    {"id": 48213, "ref": "main", "status": "success", "minutes_ago": 3},
+    {"id": 48100, "ref": "feature", "status": "failed", "minutes_ago": 60}
+  ],
+  "open_mrs": 5,
+  "open_issues": 17
+}

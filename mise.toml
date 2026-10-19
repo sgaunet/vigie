@@ -1,0 +1,6 @@
+[tools]
+go = "1.27.2"
+task = "3.53.1"
+golangci-lint = "2.14"
+goreleaser = "2"
+syft = "1.51.1"

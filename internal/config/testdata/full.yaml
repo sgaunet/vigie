@@ -1,0 +1,12 @@
+interval: 30s
+fields: [mrs, last]
+emoji: false
+active_days: 30
+hosts:
+  ssh.gitlab.example.com:
+    api: https://gitlab.example.com
+    token_command: ["pass", "show", "gitlab/example"]
+  gitlab.lan:
+    api: http://gitlab.lan
+    insecure: true
+    token_env: LAN_TOKEN

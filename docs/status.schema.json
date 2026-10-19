@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sgaunet/vigie/schema/status-v1.json",
+  "title": "vigie status record, v1",
+  "description": "One object per line on stdout with --output json. Field objects are null when requested but unavailable, and absent when not requested with --fields.",
+  "type": "object",
+  "required": ["project", "url", "archived", "branch", "fetched_at", "stale", "errors"],
+  "additionalProperties": false,
+  "properties": {
+    "project": { "type": "string", "description": "path_with_namespace, e.g. group/sub/project" },
+    "url": { "type": "string", "format": "uri" },
+    "archived": { "type": "boolean" },
+    "branch": { "type": "string", "description": "reporting branch: current, or default when HEAD is detached" },
+    "branches": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["active", "total"],
+          "additionalProperties": false,
+          "properties": {
+            "active": { "$ref": "#/$defs/count" },
+            "total": { "$ref": "#/$defs/count" },
+            "capped": { "const": true }
+          }
+        }
+      ]
+    },
+    "pipelines": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["running", "pending"],
+          "additionalProperties": false,
+          "properties": {
+            "running": { "$ref": "#/$defs/count" },
+            "pending": { "$ref": "#/$defs/count" },
+            "capped": { "const": true }
+          }
+        }
+      ]
+    },
+    "last": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": ["created", "waiting_for_resource", "preparing", "pending", "running",
+                       "success", "failed", "canceled", "skipped", "manual", "scheduled",
+                       "none", "unknown"]
+            },
+            "id": { "type": "integer" },
+            "ref": { "type": "string" },
+            "updated_at": { "type": "string", "format": "date-time" },
+            "web_url": { "type": "string", "format": "uri" }
+          }
+        }
+      ]
+    },
+    "mrs": { "$ref": "#/$defs/opened" },
+    "issues": { "$ref": "#/$defs/opened" },
+    "fetched_at": { "type": "string", "format": "date-time", "description": "time of the last successful refresh" },
+    "stale": { "type": "boolean" },
+    "stale_since": { "type": "string", "format": "date-time", "description": "present only when stale is true" },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "field": { "enum": ["branches", "pipelines", "last", "mrs", "issues", "refresh"] },
+          "reason": { "type": "string", "description": "one-line message, never contains the token" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "null only when the parent object has capped: true (more than 10,000)"
+    },
+    "opened": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["opened"],
+          "additionalProperties": false,
+          "properties": {
+            "opened": { "$ref": "#/$defs/count" },
+            "capped": { "const": true }
+          }
+        }
+      ]
+    }
+  }
+}
