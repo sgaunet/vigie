@@ -47,11 +47,12 @@ type FieldResult struct {
 	Err       error
 }
 
-// Project is the part of the GitLab project shown on the line.
+// Project is the part of the project or repository shown on the line.
 type Project struct {
 	Path     string
 	WebURL   string
 	Archived bool
+	Platform Platform // set from the endpoint wherever a Project is built
 }
 
 // Snapshot is the content of one refresh, rendered identically in every output format.

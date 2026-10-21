@@ -63,11 +63,34 @@ func TestTokenNeverPrintsRawValue(t *testing.T) {
 
 func TestMask(t *testing.T) {
 	t.Parallel()
-	if got := token.Mask("glpat-abc"); got != "glpat-****" {
-		t.Errorf("Mask(glpat-abc) = %q", got)
+	cases := map[string]string{
+		"glpat-abc":                      "glpat-****",
+		"glpat-x":                        "glpat-****",
+		"ghp_abc123":                     "ghp_****",
+		"github_pat_11AB_xyz":            "github_pat_****",
+		"gho_x":                          "gho_****",
+		"ghu_x":                          "ghu_****",
+		"ghs_" + strings.Repeat("a", 80): "ghs_****",
+		"ghr_x":                          "ghr_****",
+		"gh_x":                           "****",
+		"abc":                            "****",
 	}
-	if got := token.Mask("abc"); got != "****" {
-		t.Errorf("Mask(abc) = %q", got)
+	for in, want := range cases {
+		if got := token.Mask(in); got != want {
+			t.Errorf("Mask(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestGitHubTokenNeverPrinted(t *testing.T) {
+	t.Parallel()
+	tok := token.New("ghp_s3cr3tV4lue")
+	var js bytes.Buffer
+	slog.New(slog.NewJSONHandler(&js, nil)).Info("x", "token", tok)
+	for _, out := range []string{fmt.Sprintf("%v %s %#v", tok, tok, tok), js.String()} {
+		if strings.Contains(out, "s3cr3t") || !strings.Contains(out, "ghp_****") {
+			t.Errorf("output %q", out)
+		}
 	}
 }
 

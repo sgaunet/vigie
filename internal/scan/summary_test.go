@@ -39,9 +39,9 @@ func TestSummarize(t *testing.T) {
 
 func TestSummarySkipsOrder(t *testing.T) {
 	t.Parallel()
-	s := scan.Summarize(0, skips(scan.ReasonOtherHost, scan.ReasonUnknownHost, scan.ReasonRemoteURL,
+	s := scan.Summarize(0, skips(scan.ReasonOtherHost, scan.ReasonNoToken, scan.ReasonUnknownHost, scan.ReasonRemoteURL,
 		scan.ReasonNoRemote, scan.ReasonUnreadable, scan.ReasonBare, scan.ReasonBare), "upstream")
-	want := `7 skipped (2 bare, 1 unreadable, 1 no remote "upstream", 1 remote URL not understood, 1 unknown host, 1 other host)`
+	want := `8 skipped (2 bare, 1 unreadable, 1 no remote "upstream", 1 remote URL not understood, 1 unknown host, 1 no token, 1 other host)`
 	if got := s.Skips(); got != want {
 		t.Fatalf("Skips() = %q, want %q", got, want)
 	}
@@ -61,9 +61,14 @@ func TestSummaryErr(t *testing.T) {
 		t.Fatalf("nothing found: %v", err)
 	}
 	err = scan.Summarize(0, skips(scan.ReasonNoRemote, scan.ReasonUnknownHost, scan.ReasonUnknownHost), "origin").Err(4)
-	want = `no GitLab repository found: 3 skipped (1 no remote "origin", 2 unknown host); add self-hosted hosts to the config file "hosts", or run with -v`
-	if !errors.Is(err, scan.ErrNoGitLab) || errors.Is(err, repo.ErrNotRepository) || err.Error() != want {
+	want = `no GitLab or GitHub repository found: 3 skipped (1 no remote "origin", 2 unknown host); add self-hosted hosts to the config file "hosts", or run with -v`
+	if !errors.Is(err, scan.ErrNothingListed) || errors.Is(err, repo.ErrNotRepository) || err.Error() != want {
 		t.Fatalf("none listed: %v", err)
+	}
+	err = scan.Summarize(0, skips(scan.ReasonNoToken, scan.ReasonNoToken), "origin").Err(4)
+	want = "no GitLab or GitHub repository found: 2 skipped (2 no token); export GH_TOKEN for github.com clones, or run with -v"
+	if !errors.Is(err, scan.ErrNothingListed) || err.Error() != want {
+		t.Fatalf("none listed, no token: %v", err)
 	}
 }
 
@@ -75,6 +80,7 @@ func TestReasonText(t *testing.T) {
 		scan.ReasonNoRemote:    `no remote "origin"`,
 		scan.ReasonRemoteURL:   "remote URL not understood",
 		scan.ReasonUnknownHost: "unknown host",
+		scan.ReasonNoToken:     "no token",
 		scan.ReasonOtherHost:   "other host",
 	}
 	for r, want := range cases {

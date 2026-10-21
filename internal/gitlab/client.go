@@ -2,30 +2,21 @@ package gitlab
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/sgaunet/vigie/internal/forge"
 	"github.com/sgaunet/vigie/internal/token"
 )
 
-// Transport limits (research R9). The response deadline is the refresh context.
-const (
-	dialTimeout      = 5 * time.Second
-	handshakeTimeout = 5 * time.Second
-	maxBody          = 16 << 20
-	maxRedirects     = 10
-)
-
-var errRedirect = errors.New("redirect refused")
+// maxBody bounds each response body (research R9).
+const maxBody = 16 << 20
 
 // Retry limits (research S6): at most maxRetries retries of one request, waiting the
 // server's Retry-After, else retryBase × 2^attempt capped at maxBackoff.
@@ -35,14 +26,6 @@ const (
 )
 
 var retryBase = 250 * time.Millisecond
-
-// Options tune NewClient.
-type Options struct {
-	Insecure      bool   // allow an http:// base URL
-	ExtraRootsPEM []byte // CA certificates trusted in addition to the system pool
-	Retry         bool   // retry 429 and 5xx answers within the context deadline
-	OnThrottle    func() // called on every 429 or 5xx answer when Retry is set; may be nil
-}
 
 // Client is a read-only GitLab REST API v4 client.
 type Client struct {
@@ -58,25 +41,16 @@ type Client struct {
 
 // NewClient returns a client for the GitLab instance at base (e.g. https://gitlab.com).
 // It refuses an http:// base unless opts.Insecure is set.
-func NewClient(base *url.URL, tok token.Token, opts Options) (*Client, error) {
+func NewClient(base *url.URL, tok token.Token, opts forge.Options) (*Client, error) {
 	switch {
 	case base.Scheme == "http" && !opts.Insecure:
-		return nil, fmt.Errorf("%w %s: set insecure: true for this host in the config file", ErrInsecure, base)
+		return nil, fmt.Errorf("%w %s: set insecure: true for this host in the config file", forge.ErrInsecure, base)
 	case base.Scheme != "http" && base.Scheme != "https":
-		return nil, fmt.Errorf("%w: unsupported scheme in %s", ErrInsecure, base)
+		return nil, fmt.Errorf("%w: unsupported scheme in %s", forge.ErrInsecure, base)
 	}
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-	if err := addRoots(tlsConfig, opts.ExtraRootsPEM); err != nil {
+	hc, err := forge.NewHTTPClient(opts)
+	if err != nil {
 		return nil, err
-	}
-	transport := &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
-		DialContext:         (&net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}).DialContext,
-		TLSHandshakeTimeout: handshakeTimeout,
-		TLSClientConfig:     tlsConfig,
-		ForceAttemptHTTP2:   true,
-		MaxIdleConnsPerHost: 8,
-		IdleConnTimeout:     90 * time.Second,
 	}
 	b := strings.TrimSuffix(base.String(), "/")
 	return &Client{
@@ -84,25 +58,10 @@ func NewClient(base *url.URL, tok token.Token, opts Options) (*Client, error) {
 		base:       b,
 		host:       base.Host,
 		tok:        tok,
-		hc:         &http.Client{Transport: transport, CheckRedirect: checkRedirect},
+		hc:         hc,
 		retry:      opts.Retry,
 		onThrottle: opts.OnThrottle,
 	}, nil
-}
-
-// checkRedirect refuses redirects that change host or downgrade the scheme: Go forwards
-// custom headers such as PRIVATE-TOKEN on redirects.
-func checkRedirect(req *http.Request, via []*http.Request) error {
-	orig := via[0].URL
-	switch {
-	case req.URL.Host != orig.Host:
-		return fmt.Errorf("%w: %s redirects to %s, set the GitLab URL to the final address", errRedirect, orig.Host, req.URL.Host)
-	case orig.Scheme == "https" && req.URL.Scheme != "https":
-		return fmt.Errorf("%w: %s redirects to plain http", errRedirect, orig.Host)
-	case len(via) >= maxRedirects:
-		return fmt.Errorf("%w: too many redirects from %s", errRedirect, orig.Host)
-	}
-	return nil
 }
 
 // statusError is a non-200 answer.
@@ -115,14 +74,9 @@ func (e *statusError) Error() string {
 	return fmt.Sprintf("server answered %d %s", e.code, http.StatusText(e.code))
 }
 
-// RetryAfter returns the delay the server asked for with Retry-After, if any.
-func RetryAfter(err error) (time.Duration, bool) {
-	var se *statusError
-	if errors.As(err, &se) && se.retryAfter > 0 {
-		return se.retryAfter, true
-	}
-	return 0, false
-}
+// RetryAfter returns the delay the server asked for with Retry-After, 0 for none; read by
+// forge.RetryAfter.
+func (e *statusError) RetryAfter() time.Duration { return e.retryAfter }
 
 // get fetches c.api+path and decodes the JSON body into out. It returns the response
 // headers, a classified transport error, or a *statusError for any status but 200. With
@@ -150,7 +104,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) (h
 		case <-timer.C:
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, c.transportError(ctx, ctx.Err())
+			return nil, forge.TransportError(ctx, c.host, ctx.Err())
 		}
 	}
 }
@@ -170,37 +124,21 @@ func (c *Client) getOnce(ctx context.Context, path string, q url.Values, out any
 	req.Header.Set("User-Agent", "vigie")
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return nil, c.transportError(ctx, err)
+		return nil, forge.TransportError(ctx, c.host, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body := io.LimitReader(resp.Body, maxBody)
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, body)
-		return resp.Header, &statusError{code: resp.StatusCode, retryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		return resp.Header, &statusError{code: resp.StatusCode, retryAfter: forge.ParseRetryAfter(resp.Header.Get("Retry-After"))}
 	}
 	if err := json.NewDecoder(body).Decode(out); err != nil {
 		if ctx.Err() != nil {
-			return nil, c.transportError(ctx, err)
+			return nil, forge.TransportError(ctx, c.host, err)
 		}
 		return nil, fmt.Errorf("malformed response from %s: %w", c.host, err)
 	}
 	return resp.Header, nil
-}
-
-func (c *Client) transportError(ctx context.Context, err error) error {
-	var ue *url.Error
-	if errors.As(err, &ue) {
-		err = ue.Err
-	}
-	switch {
-	case errors.Is(err, errRedirect):
-		return err
-	case errors.Is(ctx.Err(), context.Canceled):
-		return fmt.Errorf("request to %s interrupted: %w", c.host, context.Canceled)
-	case errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return fmt.Errorf("%w %s: no answer within the time budget, raise --timeout: %w", ErrNetwork, c.host, context.DeadlineExceeded)
-	}
-	return fmt.Errorf("%w %s: %w", ErrNetwork, c.host, err)
 }
 
 // httpError classifies a *statusError that has no endpoint-specific meaning.
@@ -211,23 +149,9 @@ func (c *Client) httpError(err error) error {
 	}
 	switch {
 	case se.code == http.StatusUnauthorized:
-		return fmt.Errorf("%w by %s (401): check that the token is valid and not expired", ErrUnauthorized, c.host)
+		return fmt.Errorf("%w by %s (401): check that the token is valid and not expired", forge.ErrUnauthorized, c.host)
 	case se.code == http.StatusTooManyRequests || se.code >= 500:
-		return fmt.Errorf("%w %s: %w", ErrNetwork, c.host, se)
+		return fmt.Errorf("%w %s: %w", forge.ErrNetwork, c.host, se)
 	}
 	return fmt.Errorf("unexpected answer from %s: %w", c.host, se)
-}
-
-// parseRetryAfter reads a Retry-After value in seconds or as an HTTP date.
-func parseRetryAfter(v string) time.Duration {
-	if v == "" {
-		return 0
-	}
-	if s, err := strconv.Atoi(v); err == nil {
-		return max(0, time.Duration(s)*time.Second)
-	}
-	if t, err := http.ParseTime(v); err == nil {
-		return max(0, time.Until(t))
-	}
-	return 0
 }

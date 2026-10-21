@@ -84,7 +84,7 @@ func TestE2EScanHostFilter(t *testing.T) {
 	}
 
 	out, errOut, code = e.run(t, nil, "--host", "https://gitlab.example.com")
-	want := `no GitLab repository found: 4 skipped (4 other host); add self-hosted hosts to the config file "hosts", or run with -v` + "\n"
+	want := `no GitLab or GitHub repository found: 4 skipped (4 other host); add self-hosted hosts to the config file "hosts", or run with -v` + "\n"
 	if code != 2 || out != "" || errOut != want {
 		t.Fatalf("no clone on the host: code=%d stdout=%q stderr=%q", code, out, errOut)
 	}

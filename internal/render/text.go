@@ -38,9 +38,10 @@ func Text(s status.Snapshot, st Style, now time.Time) string {
 // projectSegment renders the project within budget cells (no limit when the style has no
 // width).
 func projectSegment(p status.Project, st Style, budget int) string {
+	lk := platformLook(p.Platform)
 	prefix, suffix := "", ""
 	if st.Emoji {
-		prefix = projectLook.icon + " "
+		prefix = lk.icon + " "
 	}
 	if p.Archived {
 		suffix = " " + archivedLook.label
@@ -49,7 +50,7 @@ func projectSegment(p status.Project, st Style, budget int) string {
 	if st.Width > 0 {
 		path = truncateLeft(path, budget-cellWidth(prefix+suffix))
 	}
-	out := paint(prefix+path, projectLook.color, st.Color)
+	out := paint(prefix+path, lk.color, st.Color)
 	if p.Archived {
 		out += " " + paint(archivedLook.label, archivedLook.color, st.Color)
 	}

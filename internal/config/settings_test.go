@@ -152,3 +152,17 @@ func TestLoadIntervalMessage(t *testing.T) {
 		t.Fatalf("message = %v", err)
 	}
 }
+
+func TestGitLabHostOnGitHub(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"https://github.com", "https://www.github.com"} {
+		_, err := load(t, config.Overrides{}, map[string]string{"GITLAB_HOST": v})
+		want := "GITLAB_HOST " + v + " is a GitHub host: unset it, and pass --host https://github.com outside a clone"
+		if !errors.Is(err, config.ErrInvalid) || err.Error() != want {
+			t.Errorf("%s: got %v, want %q", v, err, want)
+		}
+	}
+	if _, err := load(t, config.Overrides{}, map[string]string{"GITLAB_HOST": "https://gitlab.example.com"}); err != nil {
+		t.Errorf("GitLab GITLAB_HOST: %v", err)
+	}
+}

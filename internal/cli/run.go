@@ -7,11 +7,14 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"strings"
 	"time"
 
 	"golang.org/x/term"
 
 	"github.com/sgaunet/vigie/internal/config"
+	"github.com/sgaunet/vigie/internal/forge"
+	"github.com/sgaunet/vigie/internal/github"
 	"github.com/sgaunet/vigie/internal/gitlab"
 	"github.com/sgaunet/vigie/internal/render"
 	"github.com/sgaunet/vigie/internal/repo"
@@ -69,13 +72,14 @@ func Run(ctx context.Context, ov config.Overrides, std IO) error {
 	return r.once(ctx, t, std.Stdout)
 }
 
-// runner holds what one invocation needs to talk to GitLab.
+// runner holds what one invocation needs to talk to the hosting instance.
 type runner struct {
-	s      config.Settings
-	log    *slog.Logger
-	client *gitlab.Client
-	ref    string // project path or numeric ID
-	detect bool   // the project comes from the git remote, so the branch does too
+	s        config.Settings
+	log      *slog.Logger
+	client   forge.Client
+	platform status.Platform
+	ref      string // project path or numeric ID
+	detect   bool   // the project comes from the git remote, so the branch does too
 }
 
 // target is a resolved project with its reporting branch.
@@ -98,28 +102,46 @@ func newRunner(ctx context.Context, s config.Settings, env map[string]string, lo
 	if err != nil {
 		return nil, err
 	}
+	r := &runner{s: s, log: log, platform: ep.Platform, ref: s.Project}
+	if r.ref == "" {
+		r.ref, r.detect = co.Remote.Path, true
+	}
+	// Before the token: a bad path never runs a token_command.
+	if err := config.CheckProject(ep, r.ref); err != nil {
+		return nil, err
+	}
 	tok, err := token.Resolve(ctx, ep.Token, env)
 	if err != nil {
 		return nil, err
 	}
-	log.Debug("gitlab endpoint", "url", ep.API.String(), "insecure", ep.Insecure, "token", tok)
-	client, err := gitlab.NewClient(ep.API, tok, gitlab.Options{Insecure: ep.Insecure, ExtraRootsPEM: ep.ExtraRootsPEM})
+	log.Debug("endpoint", "platform", ep.Platform, "url", ep.API.String(), "insecure", ep.Insecure, "token", tok)
+	// Revalidated requests answered 304 cost no allowance on GitHub; watch mode needs it.
+	opts := forge.Options{Insecure: ep.Insecure, ExtraRootsPEM: ep.ExtraRootsPEM, Revalidate: true}
+	var client forge.Client
+	if ep.Platform == status.PlatformGitHub {
+		client, err = github.NewClient(ep.API, tok, opts)
+	} else {
+		client, err = gitlab.NewClient(ep.API, tok, opts)
+	}
 	if err != nil {
 		return nil, err
 	}
-	r := &runner{s: s, log: log, client: client, ref: s.Project}
-	if r.ref == "" {
-		r.ref, r.detect = co.Remote.Path, true
-	}
+	r.client = client
 	return r, nil
 }
 
-// resolve looks up the project and picks the reporting branch: the current branch, or the
-// default branch when HEAD is detached or the project was given with --project.
+// resolve looks up the project within --timeout and picks the reporting branch: the
+// current branch, or the default branch when HEAD is detached or the project was given
+// with --project.
 func (r *runner) resolve(ctx context.Context) (target, error) {
-	p, err := r.client.Project(ctx, r.ref)
+	lookup, cancel := context.WithTimeout(ctx, r.s.Timeout)
+	defer cancel()
+	p, err := r.client.Project(lookup, r.ref)
 	if err != nil {
 		return target{}, err
+	}
+	if r.detect && !strings.EqualFold(p.Path, r.ref) {
+		r.log.Debug("repository moved to " + p.Path + ": update the remote URL")
 	}
 	branch := p.DefaultBranch
 	if r.detect {
@@ -129,9 +151,9 @@ func (r *runner) resolve(ctx context.Context) (target, error) {
 	}
 	r.log.Debug("project resolved", "project", p.Path, "id", p.ID, "branch", branch)
 	return target{
-		project: status.Project{Path: p.Path, WebURL: p.WebURL, Archived: p.Archived},
+		project: status.Project{Path: p.Path, WebURL: p.WebURL, Archived: p.Archived, Platform: r.platform},
 		branch:  branch,
-		source:  r.client.ForProject(p.ID),
+		source:  r.client.Source(p),
 	}, nil
 }
 
@@ -151,7 +173,7 @@ func (r *runner) once(ctx context.Context, t target, stdout io.Writer) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("interrupted: %w", err)
 	}
-	if err := gitlab.RefreshError(fields); err != nil {
+	if err := forge.RefreshError(fields); err != nil {
 		return err
 	}
 	r.logFields(fields, slog.LevelWarn)
@@ -194,7 +216,7 @@ func (r *runner) watch(ctx context.Context, t target, std IO) error {
 		},
 		Resize:     watch.ResizeSignal(ctx),
 		Fatal:      fatalInWatch,
-		RetryAfter: gitlab.RetryAfter,
+		RetryAfter: forge.RetryAfter,
 	})
 	if err != nil {
 		_ = d.Close() // end the status line before main prints the error
@@ -226,8 +248,8 @@ func (r *runner) display(std IO) *render.Display {
 
 // fatalInWatch tells which errors stop watch mode instead of marking values stale.
 func fatalInWatch(err error) bool {
-	return errors.Is(err, gitlab.ErrUnauthorized) || errors.Is(err, gitlab.ErrForbidden) ||
-		errors.Is(err, gitlab.ErrProjectNotFound)
+	return errors.Is(err, forge.ErrUnauthorized) || errors.Is(err, forge.ErrForbidden) ||
+		errors.Is(err, forge.ErrNotFound)
 }
 
 // logFields logs field errors: unavailable fields at debug level, the rest at level.

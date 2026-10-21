@@ -81,6 +81,10 @@ func TestE2EHelp(t *testing.T) {
 		"  0  ", "  1  ", "  2  ", "  3  ", "  4  ", "  5  ", "Settings: flags > environment", "GITLAB_HOST (fallback only)",
 		"Folder of clones:", "or folder to scan", "per repository when scanning", "When scanning:",
 		"--depth N", "only clones on this host",
+		"GitLab project or GitHub repository", "GitLab or GitHub base URL", "GH_TOKEN > GITHUB_TOKEN (github.com)",
+		"GH_ENTERPRISE_TOKEN > GITHUB_ENTERPRISE_TOKEN", "GH_TOKEN, GITHUB_TOKEN", "time budget of the project lookup",
+		`gitlab.com, github.com, config "hosts", GITLAB_HOST`, "A GitHub clone needs a GitHub token, else it is skipped",
+		"platform: github", "GitHub Enterprise Server (default: gitlab)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help lacks %q", want)

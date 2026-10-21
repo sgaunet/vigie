@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,24 +11,42 @@ import (
 	"testing"
 )
 
-// schemaKeys returns the properties declared at the top of the published schema.
-func schemaKeys(t *testing.T) map[string]bool {
+// schema returns the properties declared at the top of the published schema, and the
+// required ones.
+func schema(t *testing.T) (map[string]bool, []string) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "status.schema.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var schema struct {
+	var s struct {
 		Properties map[string]any `json:"properties"`
+		Required   []string       `json:"required"`
 	}
-	if err := json.Unmarshal(raw, &schema); err != nil {
+	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatal(err)
 	}
 	keys := map[string]bool{}
-	for k := range schema.Properties {
+	for k := range s.Properties {
 		keys[k] = true
 	}
-	return keys
+	return keys, s.Required
+}
+
+// checkSchema asserts every key of rec is in the schema and every required key is present.
+func checkSchema(t *testing.T, rec map[string]any) {
+	t.Helper()
+	keys, required := schema(t)
+	for k := range rec {
+		if !keys[k] {
+			t.Errorf("%v: key %q is not in the schema", rec["dir"], k)
+		}
+	}
+	for _, k := range required {
+		if _, ok := rec[k]; !ok {
+			t.Errorf("%v: required key %q is missing", rec["dir"], k)
+		}
+	}
 }
 
 // records parses one JSON object per line.
@@ -64,13 +83,11 @@ func TestE2EScanJSON(t *testing.T) {
 	}
 	recs := records(t, out)
 	var dirs []string
-	keys := schemaKeys(t)
 	for _, r := range recs {
 		dirs = append(dirs, r["dir"].(string))
-		for k := range r {
-			if !keys[k] {
-				t.Errorf("%s: key %q is not in the schema", r["dir"], k)
-			}
+		checkSchema(t, r)
+		if r["platform"] != "gitlab" {
+			t.Errorf("%s: platform = %v", r["dir"], r["platform"])
 		}
 	}
 	if want := []string{"api", "feat", "legacy", "team/tools/cli", "team/web"}; !slices.Equal(dirs, want) {
@@ -145,5 +162,35 @@ func TestE2EScanRowIsSingleMode(t *testing.T) {
 		if !reflect.DeepEqual(rec, want) {
 			t.Errorf("%s:\n scan: %v\nsingle: %v", dir, rec, want)
 		}
+	}
+}
+
+func TestE2EScanJSONMixed(t *testing.T) {
+	t.Parallel()
+	e := newMixedE2E(t)
+	out, errOut, code := e.run(t, e.tokens(), "-o", "json")
+	if code != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, out, errOut)
+	}
+	var pairs []string
+	for _, r := range records(t, out) {
+		checkSchema(t, r)
+		pairs = append(pairs, fmt.Sprint(r["dir"], " ", r["platform"]))
+	}
+	if want := []string{"gh/app github", "gh/lib github", "gl/api gitlab", "gl/web gitlab"}; !slices.Equal(pairs, want) {
+		t.Fatalf("[dir, platform] = %q, want %q", pairs, want)
+	}
+
+	// One jq filter for both platforms: select(.last.status=="failed").
+	cloneAt(t, e.root, "gl/feat", "git@gitlab.test:backend/api.git", "feature")
+	out, _, _ = e.run(t, e.tokens(), "-o", "json")
+	platforms := map[any]bool{}
+	for _, r := range records(t, out) {
+		if last, ok := r["last"].(map[string]any); ok && last["status"] == "failed" {
+			platforms[r["platform"]] = true
+		}
+	}
+	if !platforms["gitlab"] || !platforms["github"] {
+		t.Fatalf("failed records by platform = %v", platforms)
 	}
 }

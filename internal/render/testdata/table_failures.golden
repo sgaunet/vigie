@@ -1,12 +1,12 @@
-[1mDIR[0m        [1mPROJECT[0m         [1mBRANCHES[0m  [1mPIPELINES[0m  [1mLAST[0m        [1mMRS[0m  [1mISSUES[0m
-auth       [1mgroup/auth[0m      [33m⚠ auth[0m
-not-found  [1mgroup/notfound[0m  [33m⚠ not found[0m
-network    [1mgroup/network[0m   [33m⚠ network[0m
-error      [1mgroup/error[0m     [33m⚠ error[0m
-api        [1mbackend/api[0m     12/42     [34m2r/1p[0m      [32m✅ main 3m[0m  [1m5[0m    [1m17[0m
-DIR        PROJECT         BRANCHES  PIPELINES  LAST        MRS  ISSUES
-auth       group/auth      ! auth
-not-found  group/notfound  ! not found
-network    group/network   ! network
-error      group/error     ! error
-api        backend/api     12/42     2r/1p      ok main 3m  5    17
+[1mDIR[0m        [1mPLATFORM[0m  [1mPROJECT[0m         [1mBRANCHES[0m  [1mPIPELINES[0m  [1mLAST[0m        [1mMRS[0m  [1mISSUES[0m
+auth       gitlab    [1mgroup/auth[0m      [33m⚠ auth[0m
+not-found  gitlab    [1mgroup/notfound[0m  [33m⚠ not found[0m
+network    gitlab    [1mgroup/network[0m   [33m⚠ network[0m
+error      gitlab    [1mgroup/error[0m     [33m⚠ error[0m
+api        gitlab    [1mbackend/api[0m     12/42     [34m2r/1p[0m      [32m✅ main 3m[0m  [1m5[0m    [1m17[0m
+DIR        PLATFORM  PROJECT         BRANCHES  PIPELINES  LAST        MRS  ISSUES
+auth       gitlab    group/auth      ! auth
+not-found  gitlab    group/notfound  ! not found
+network    gitlab    group/network   ! network
+error      gitlab    group/error     ! error
+api        gitlab    backend/api     12/42     2r/1p      ok main 3m  5    17

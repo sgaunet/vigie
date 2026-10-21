@@ -13,7 +13,7 @@ func TestE2EJSONOutput(t *testing.T) {
 	t.Parallel()
 	e := newE2E(t)
 	out, errOut, code := e.run(t, "-o", "json")
-	if code != 0 || errOut != "" || strings.Count(out, "\n") != 1 {
+	if code != 0 || errOut != "" || strings.Count(out, "\n") != 1 || !strings.HasPrefix(out, `{"platform":"gitlab",`) {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
 	var rec struct {

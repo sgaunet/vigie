@@ -13,6 +13,7 @@ import (
 // domain types so that refactoring status never changes the output by accident.
 
 type jsonRecord struct {
+	Platform   status.Platform `json:"platform"` // first, in every record
 	Project    string          `json:"project"`
 	URL        string          `json:"url"`
 	Archived   bool            `json:"archived"`
@@ -116,6 +117,7 @@ func snapshotRecord(s status.Snapshot) (jsonRecord, error) {
 // baseRecord fills the part of a record that does not depend on the fields.
 func baseRecord(s status.Snapshot) jsonRecord {
 	return jsonRecord{
+		Platform:  s.Project.Platform,
 		Project:   s.Project.Path,
 		URL:       s.Project.WebURL,
 		Archived:  s.Project.Archived,

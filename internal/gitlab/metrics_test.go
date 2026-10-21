@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sgaunet/vigie/internal/forge"
 	"github.com/sgaunet/vigie/internal/gitlab"
 	"github.com/sgaunet/vigie/internal/gitlab/gitlabtest"
 	"github.com/sgaunet/vigie/internal/status"
@@ -178,7 +179,7 @@ func TestMetricUnauthorized(t *testing.T) {
 	t.Parallel()
 	s := newServer(t)
 	s.Set(gitlabtest.EndpointMRs, gitlabtest.Behavior{Status: http.StatusUnauthorized})
-	if _, err := metrics(t, s).OpenMRs(context.Background()); !errors.Is(err, gitlab.ErrUnauthorized) {
+	if _, err := metrics(t, s).OpenMRs(context.Background()); !errors.Is(err, forge.ErrUnauthorized) {
 		t.Fatalf("got %v", err)
 	}
 }

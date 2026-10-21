@@ -13,7 +13,7 @@ func TestCellWidth(t *testing.T) {
 	t.Parallel()
 	cases := map[string]int{
 		"abc": 3, "…": 1, "–": 1, "·": 1, "∅": 1, "⚠": 1,
-		"🗼": 2, "🌿": 2, "⚙️": 2, "✅": 2, "❌": 2, "🔄": 2, "⏳": 2, "✋": 2, "🕒": 2,
+		"🗼": 2, "🦊": 2, "🐙": 2, "🌿": 2, "⚙️": 2, "✅": 2, "❌": 2, "🔄": 2, "⏳": 2, "✋": 2, "🕒": 2,
 		"⏭️": 2, "❓": 2, "❔": 2, "🔀": 2, "🐛": 2,
 		"🗼 group/app": 12, "\x1b[1mbold\x1b[0m": 4,
 	}
@@ -33,8 +33,8 @@ func longSnapshot() status.Snapshot {
 // rest returns the line after the project segment (the first space after the icon).
 func rest(line string) string {
 	start := 0
-	if i := strings.Index(line, "🗼 "); i >= 0 {
-		start = i + len("🗼 ")
+	if i := strings.Index(line, "🦊 "); i >= 0 {
+		start = i + len("🦊 ")
 	}
 	return line[start+strings.Index(line[start:], " "):]
 }
@@ -54,7 +54,7 @@ func TestTruncation(t *testing.T) {
 			w := render.CellWidth(got)
 			minimal := render.CellWidth(rest(full)) + render.CellWidth("…")
 			if st.Emoji {
-				minimal += render.CellWidth("🗼 ")
+				minimal += render.CellWidth("🦊 ")
 			}
 			if width > 0 && width >= minimal && w > width {
 				t.Errorf("width %d: line is %d cells: %q", width, w, got)

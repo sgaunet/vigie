@@ -1,0 +1,4 @@
+DIR   PLATFORM  PROJECT            BRANCHES  PIPELINES  LAST         MRS  ISSUES
+cli   github    sgaunet/vigie      3/5       1r/0p      run main 2m  2    4
+gone  github    acme/gone          ! not found
+web   github    acme/web archived  1/1       0r/0p      none main    0    –

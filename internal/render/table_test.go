@@ -10,7 +10,7 @@ import (
 	"github.com/sgaunet/vigie/internal/status"
 )
 
-// failedRow is a scan row whose project could not be fetched.
+// failedRow is a scan row whose GitLab project could not be fetched.
 func failedRow(dir, path string, f status.Failure) status.Row {
 	var fields []status.FieldResult
 	for _, n := range status.DefaultFields() {
@@ -18,7 +18,7 @@ func failedRow(dir, path string, f status.Failure) status.Row {
 	}
 	return status.Row{
 		Dir:      dir,
-		Snapshot: status.Snapshot{Project: status.Project{Path: path, WebURL: "https://gitlab.com/" + path}, Branch: "main", Fields: fields, FetchedAt: now},
+		Snapshot: status.Snapshot{Project: status.Project{Path: path, WebURL: "https://gitlab.com/" + path, Platform: status.PlatformGitLab}, Branch: "main", Fields: fields, FetchedAt: now},
 		Failure:  f,
 		Err:      fmt.Errorf("project %s %s", path, f),
 	}
@@ -27,10 +27,10 @@ func failedRow(dir, path string, f status.Failure) status.Row {
 // tableRows is the four-row example of contracts/cli.md "Text output".
 func tableRows() []status.Row {
 	api := fullSnapshot()
-	api.Project = status.Project{Path: "backend/api", WebURL: "https://gitlab.com/backend/api"}
+	api.Project = status.Project{Path: "backend/api", WebURL: "https://gitlab.com/backend/api", Platform: status.PlatformGitLab}
 
 	cli := fullSnapshot()
-	cli.Project = status.Project{Path: "tools/cli", WebURL: "https://gitlab.com/tools/cli"}
+	cli.Project = status.Project{Path: "tools/cli", WebURL: "https://gitlab.com/tools/cli", Platform: status.PlatformGitLab}
 	cli.Branch = "fix-login"
 	cli.Fields = []status.FieldResult{
 		{Name: status.FieldBranches, Branches: status.Branches{Active: count(3), Total: count(3)}},
@@ -41,7 +41,7 @@ func tableRows() []status.Row {
 	}
 
 	web := fullSnapshot()
-	web.Project = status.Project{Path: "frontend/web", WebURL: "https://gitlab.com/frontend/web", Archived: true}
+	web.Project = status.Project{Path: "frontend/web", WebURL: "https://gitlab.com/frontend/web", Archived: true, Platform: status.PlatformGitLab}
 	web.Fields = []status.FieldResult{
 		{Name: status.FieldBranches, Branches: status.Branches{Active: count(1), Total: count(1)}},
 		{Name: status.FieldPipelines, Pipelines: status.Pipelines{Running: count(0), Pending: count(0)}},
@@ -103,7 +103,7 @@ func TestTableFieldSubset(t *testing.T) {
 	}
 	got := table(t, "subset", rows, fields, asciiPlain)
 	golden(t, "table_subset", got)
-	if head, _, _ := strings.Cut(got, "\n"); head != "DIR        PROJECT                LAST               MRS" {
+	if head, _, _ := strings.Cut(got, "\n"); head != "DIR        PLATFORM  PROJECT                LAST               MRS" {
 		t.Errorf("header = %q", head)
 	}
 }
@@ -158,7 +158,7 @@ func fieldCells(table string) []string {
 				cells = append(cells, c)
 			}
 		}
-		out = append(out, strings.Join(cells[2:], "|"))
+		out = append(out, strings.Join(cells[3:], "|"))
 	}
 	return out
 }
@@ -169,7 +169,7 @@ func TestTableWidth(t *testing.T) {
 	for _, st := range []render.Style{{}, {Emoji: true}} {
 		full := table(t, "full", longRows(), status.DefaultFields(), st)
 		fullCells := fieldCells(full)
-		for _, width := range []int{0, 100, 94, 80, 70, 50} {
+		for _, width := range []int{0, 110, 104, 90, 80, 60} {
 			st.Width = width
 			got := table(t, fmt.Sprint("width ", width), longRows(), status.DefaultFields(), st)
 			if !st.Emoji {
@@ -178,7 +178,7 @@ func TestTableWidth(t *testing.T) {
 			if fc := fieldCells(got); strings.Join(fc, "\n") != strings.Join(fullCells, "\n") {
 				t.Errorf("width %d: a field column was changed:\n%s", width, got)
 			}
-			fits := width >= 69 || width == 0
+			fits := width >= 79 || width == 0
 			for _, l := range strings.Split(strings.TrimSuffix(got, "\n"), "\n") {
 				if w := render.CellWidth(l); fits && width > 0 && w > width {
 					t.Errorf("width %d: line is %d cells: %q", width, w, l)
@@ -192,9 +192,15 @@ func TestTableWidth(t *testing.T) {
 		}
 	}
 	golden(t, "table_width", out.String())
-	cut := render.Table(longRows(), status.DefaultFields(), render.Style{Width: 80}, now)
-	if !strings.Contains(cut, "src/acme/platform/api  …/api ") || !strings.Contains(cut, "src/tools/cli          tools/cli ") {
-		t.Errorf("width 80 must cut PROJECT only:\n%s", cut)
+	cut := render.Table(longRows(), status.DefaultFields(), render.Style{Width: 90}, now)
+	if !strings.Contains(cut, "src/acme/platform/api  gitlab    …/api ") || !strings.Contains(cut, "src/tools/cli          gitlab    tools/cli ") {
+		t.Errorf("width 90 must cut PROJECT only:\n%s", cut)
+	}
+	// PLATFORM is never cut, even when nothing else can shrink.
+	for _, l := range strings.Split(render.Table(longRows(), status.DefaultFields(), render.Style{Width: 20}, now), "\n")[1:2] {
+		if !strings.Contains(l, "  gitlab  ") {
+			t.Errorf("platform cut: %q", l)
+		}
 	}
 }
 
@@ -202,8 +208,42 @@ func TestTableArchivedTagSurvivesCut(t *testing.T) {
 	t.Parallel()
 	rows := longRows()
 	rows[0].Snapshot.Project.Archived = true
-	got := render.Table(rows, status.DefaultFields(), render.Style{Width: 85}, now)
+	got := render.Table(rows, status.DefaultFields(), render.Style{Width: 95}, now)
 	if !strings.Contains(got, "…/api archived  ") {
 		t.Errorf("archived tag lost:\n%s", got)
+	}
+}
+
+// mixedRows are GitHub rows of contracts/cli.md "Scan table": fetched, failed and archived.
+func mixedRows() []status.Row {
+	cli := fullSnapshot()
+	cli.Project = status.Project{Path: "sgaunet/vigie", WebURL: "https://github.com/sgaunet/vigie", Platform: status.PlatformGitHub}
+	cli.Fields = []status.FieldResult{
+		{Name: status.FieldBranches, Branches: status.Branches{Active: count(3), Total: count(5)}},
+		{Name: status.FieldPipelines, Pipelines: status.Pipelines{Running: count(1), Pending: count(0)}},
+		{Name: status.FieldLast, Last: status.LastPipeline{Status: status.PipelineRunning, Ref: "main", UpdatedAt: now.Add(-2 * time.Minute)}},
+		{Name: status.FieldMRs, Count: count(2)},
+		{Name: status.FieldIssues, Count: count(4)},
+	}
+	gone := failedRow("gone", "acme/gone", status.FailureNotFound)
+	gone.Snapshot.Project.Platform = status.PlatformGitHub
+	web := fullSnapshot()
+	web.Project = status.Project{Path: "acme/web", WebURL: "https://github.com/acme/web", Archived: true, Platform: status.PlatformGitHub}
+	web.Fields = []status.FieldResult{
+		{Name: status.FieldBranches, Branches: status.Branches{Active: count(1), Total: count(1)}},
+		{Name: status.FieldPipelines, Pipelines: status.Pipelines{Running: count(0), Pending: count(0)}},
+		{Name: status.FieldLast, Last: status.LastPipeline{Status: status.PipelineNone, Ref: "main"}},
+		{Name: status.FieldMRs, Count: count(0)},
+		{Name: status.FieldIssues, Err: status.ErrUnavailable},
+	}
+	return []status.Row{{Dir: "cli", Snapshot: cli}, gone, {Dir: "web", Snapshot: web}}
+}
+
+func TestTableMixed(t *testing.T) {
+	t.Parallel()
+	golden(t, "table_mixed", table(t, "mixed", mixedRows(), status.DefaultFields(), asciiPlain))
+	head, _, _ := strings.Cut(table(t, "mixed color", mixedRows(), status.DefaultFields(), emojiColor), "\n")
+	if !strings.Contains(head, "\x1b[1mPLATFORM\x1b[0m") {
+		t.Errorf("PLATFORM header is not bold: %q", head)
 	}
 }

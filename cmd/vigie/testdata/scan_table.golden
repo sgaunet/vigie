@@ -1,4 +1,4 @@
-DIR             PROJECT       BRANCHES  PIPELINES  LAST        MRS  ISSUES
-api             backend/api   2/3       2r/1p      ok main 3m  5    17
-team/tools/cli  tools/cli     2/3       2r/1p      ok main 3m  5    17
-team/web        frontend/web  2/3       2r/1p      ok main 3m  5    17
+DIR             PLATFORM  PROJECT       BRANCHES  PIPELINES  LAST        MRS  ISSUES
+api             gitlab    backend/api   2/3       2r/1p      ok main 3m  5    17
+team/tools/cli  gitlab    tools/cli     2/3       2r/1p      ok main 3m  5    17
+team/web        gitlab    frontend/web  2/3       2r/1p      ok main 3m  5    17

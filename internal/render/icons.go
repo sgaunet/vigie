@@ -21,6 +21,20 @@ var (
 	staleLook     = look{icon: "⚠", label: "!", color: yellow}
 )
 
+// platformLooks is the project look of each platform; projectLook is the fallback for a
+// snapshot without one (FR-021).
+var platformLooks = map[status.Platform]look{
+	status.PlatformGitLab: {icon: "🦊", color: bold},
+	status.PlatformGitHub: {icon: "🐙", color: bold},
+}
+
+func platformLook(p status.Platform) look {
+	if l, ok := platformLooks[p]; ok {
+		return l
+	}
+	return projectLook
+}
+
 // pipelineLooks is the icon, ASCII label and color of each pipeline status.
 var pipelineLooks = map[status.PipelineStatus]look{
 	status.PipelineSuccess:            {"✅", "ok", green},

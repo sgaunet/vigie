@@ -2,14 +2,15 @@ package watch
 
 import "time"
 
-// Backoff limits.
+// Backoff limits. MaxRetryAfter bounds a server's delay hint: GitHub's allowance can reset
+// up to an hour away, and no request may be sent before (research G8).
 const (
 	MaxBackoff    = 60 * time.Second
-	MaxRetryAfter = 5 * time.Minute
+	MaxRetryAfter = time.Hour
 )
 
 // Backoff computes the delay before the next refresh: Base normally, doubled per
-// consecutive failure up to 60 s, or the server's Retry-After when larger (up to 5 min).
+// consecutive failure up to 60 s, or the server's Retry-After when larger (up to 1 h).
 type Backoff struct {
 	Base       time.Duration
 	Failures   int

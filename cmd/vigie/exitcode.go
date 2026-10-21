@@ -5,7 +5,7 @@ import (
 
 	"github.com/sgaunet/vigie/internal/cli"
 	"github.com/sgaunet/vigie/internal/config"
-	"github.com/sgaunet/vigie/internal/gitlab"
+	"github.com/sgaunet/vigie/internal/forge"
 	"github.com/sgaunet/vigie/internal/repo"
 	"github.com/sgaunet/vigie/internal/scan"
 	"github.com/sgaunet/vigie/internal/token"
@@ -33,15 +33,15 @@ var exitCodes = []struct {
 	{repo.ErrNotRepository, exitSetup},
 	{repo.ErrRemoteMissing, exitSetup},
 	{repo.ErrRemoteURL, exitSetup},
-	{gitlab.ErrInsecure, exitSetup},
+	{forge.ErrInsecure, exitSetup},
 	{scan.ErrRoot, exitSetup},
-	{scan.ErrNoGitLab, exitSetup},
+	{scan.ErrNothingListed, exitSetup},
 	{token.ErrMissing, exitAuth},
 	{token.ErrCommand, exitAuth},
-	{gitlab.ErrUnauthorized, exitAuth},
-	{gitlab.ErrForbidden, exitAuth},
-	{gitlab.ErrProjectNotFound, exitNotFound},
-	{gitlab.ErrNetwork, exitNetwork},
+	{forge.ErrUnauthorized, exitAuth},
+	{forge.ErrForbidden, exitAuth},
+	{forge.ErrNotFound, exitNotFound},
+	{forge.ErrNetwork, exitNetwork}, // also an exhausted allowance: ErrRateLimit wraps it
 }
 
 // exitCode maps an error returned by run to the process exit code.
