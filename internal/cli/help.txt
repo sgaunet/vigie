@@ -1,6 +1,6 @@
-vigie prints a one-line status of the GitLab project behind a git clone:
-branches, pipelines, the last pipeline of the current branch, open merge
-requests and open issues.
+vigie prints a one-line status of the GitLab project or GitHub repository behind a git
+clone: branches, pipelines (GitHub: workflow runs), the last pipeline of the current branch,
+open merge requests (GitHub: pull requests) and open issues.
 
 Usage:
   vigie [flags]
@@ -12,15 +12,15 @@ Flags:
   -C, --dir PATH          directory of the git clone, or folder to scan (default .)
   -r, --remote NAME       git remote to read (default origin)
   -p, --project PATH|ID   project path (group/sub/name) or numeric ID (default: detected)
-      --host URL          GitLab base URL, e.g. https://gitlab.example.com (default: detected);
-                          when scanning, only clones on this host are listed
+      --host URL          GitLab or GitHub base URL, e.g. https://gitlab.example.com
+                          (default: detected); when scanning, only clones on this host are listed
       --depth N           when scanning, levels below --dir to search (default 4)
   -f, --fields LIST       fields and their order (default branches,pipelines,last,mrs,issues)
   -o, --output FORMAT     text or json (default text)
       --no-color          disable colors
       --no-emoji          replace icons with short ASCII labels
-      --timeout DURATION  time budget of one whole refresh, per repository when scanning
-                          (default 10s)
+      --timeout DURATION  time budget of the project lookup and of one whole refresh,
+                          per repository when scanning (default 10s)
   -v, --verbose           debug logs on stderr
   -q, --quiet             errors only on stderr (exclusive with --verbose)
   -h, --help              show this help
@@ -29,22 +29,28 @@ Short flags cannot be bundled: write -w -v, not -wv.
 
 Folder of clones:
   Outside any clone and without --project, vigie scans --dir for clones whose remote is on
-  a known GitLab host (gitlab.com, config "hosts", GITLAB_HOST) and prints one table row per
-  clone. No request is sent to any other host. --watch needs a single clone.
+  a known host (gitlab.com, github.com, config "hosts", GITLAB_HOST) and prints one table row
+  per clone. A GitHub clone needs a GitHub token, else it is skipped. No request is sent to
+  any other host. --watch needs a single clone.
 
 Precedence:
   Settings: flags > environment > config file > detected from the repository > defaults.
   Host:     --host > detected from the remote (via config "hosts") > GITLAB_HOST (fallback only).
-  Token:    host entry token_env / token_command > GITLAB_TOKEN.
+  Token:    host entry token_env / token_command > GITLAB_TOKEN (GitLab),
+            GH_TOKEN > GITHUB_TOKEN (github.com),
+            GH_ENTERPRISE_TOKEN > GITHUB_ENTERPRISE_TOKEN (GitHub Enterprise Server).
 
 Environment:
-  GITLAB_TOKEN    access token with the read_api scope
-  GITLAB_HOST     GitLab base URL, used only when no host is detected
-  VIGIE_INTERVAL  default --interval
-  VIGIE_CONFIG    config file path (default $XDG_CONFIG_HOME/vigie/config.yaml,
-                  else ~/.config/vigie/config.yaml)
-  NO_COLOR        any non-empty value disables colors
-  SSL_CERT_FILE   extra CA certificates (PEM), on every platform
+  GITLAB_TOKEN              GitLab access token with the read_api scope
+  GH_TOKEN, GITHUB_TOKEN    github.com token with read access
+  GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN
+                            GitHub Enterprise Server token with read access
+  GITLAB_HOST               GitLab base URL, used only when no host is detected
+  VIGIE_INTERVAL            default --interval
+  VIGIE_CONFIG              config file path (default $XDG_CONFIG_HOME/vigie/config.yaml,
+                            else ~/.config/vigie/config.yaml)
+  NO_COLOR                  any non-empty value disables colors
+  SSL_CERT_FILE             extra CA certificates (PEM), on every platform
 
 Config file (YAML, optional; never put a token in it):
   interval: 5s
@@ -56,6 +62,8 @@ Config file (YAML, optional; never put a token in it):
       api: https://gitlab.example.com
       token_command: ["pass", "show", "gitlab/example"]   # or token_env: VAR
       insecure: false                                      # true allows http://
+    github.example.com:
+      platform: github                                     # GitHub Enterprise Server (default: gitlab)
 
 Output:
   stdout carries status records only; errors and logs go to stderr.

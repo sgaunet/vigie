@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/sgaunet/vigie/internal/config"
+	"github.com/sgaunet/vigie/internal/forge"
+	"github.com/sgaunet/vigie/internal/github"
 	"github.com/sgaunet/vigie/internal/gitlab"
 	"github.com/sgaunet/vigie/internal/status"
 	"github.com/sgaunet/vigie/internal/token"
 )
 
-// ReposPerHost bounds the repositories fetched at once from one GitLab instance. Each
+// ReposPerHost bounds the repositories fetched at once from one hosting instance. Each
 // sends up to 9 requests at a time, so an instance sees at most about 36.
 const ReposPerHost = 4
 
@@ -28,40 +30,54 @@ type FetchConfig struct {
 	OnDone     func(done, total int) // called under a mutex as each repository ends; may be nil
 }
 
-// host is one GitLab instance: a distinct API base URL and token source.
+// host is one hosting instance: a distinct platform, API base URL and token source.
 type host struct {
 	ep    config.Endpoint
 	slots *slots
 	log   *slog.Logger
 
 	once    sync.Once
-	client  *gitlab.Client
+	client  forge.Client
 	initErr error
 
 	mu      sync.Mutex
-	latched error // the first rejected or unreadable token; later repositories fail with it
+	latched error // the first rejected or unreadable token, or exhausted allowance; later repositories fail with it
 }
 
-// hostID tells hosts apart: two remote names mapped to one API with one token share a host.
+// hostID tells hosts apart: two remote names mapped to one API with one token share a host;
+// github.com and an Enterprise Server, or one URL on two platforms, never do.
 func hostID(ep config.Endpoint) string {
-	return ep.API.String() + "\x00" + ep.Token.Env + "\x00" + strings.Join(ep.Token.Command, "\x00")
+	return strings.Join([]string{string(ep.Platform), ep.API.String(), ep.Token.Env, strings.Join(ep.Token.Command, "\x00"),
+		strings.Join(ep.Token.Vars, ","), ep.Token.Host}, "\x00")
 }
 
 // connect resolves the token and builds the client, once per host, so a token_command
 // runs at most once. The client retries throttled requests and slows the host down.
-func (h *host) connect(ctx context.Context, env map[string]string) (*gitlab.Client, error) {
+func (h *host) connect(ctx context.Context, env map[string]string) (forge.Client, error) {
 	h.once.Do(func() {
 		tok, err := token.Resolve(ctx, h.ep.Token, env)
 		if err != nil {
 			h.initErr = err
 			return
 		}
-		h.client, h.initErr = gitlab.NewClient(h.ep.API, tok, gitlab.Options{
+		opts := forge.Options{
 			Insecure:      h.ep.Insecure,
 			ExtraRootsPEM: h.ep.ExtraRootsPEM,
 			Retry:         true,
 			OnThrottle:    h.throttled,
-		})
+			Revalidate:    false, // every URL is fetched once
+		}
+		var client forge.Client
+		if h.ep.Platform == status.PlatformGitHub {
+			client, err = github.NewClient(h.ep.API, tok, opts)
+		} else {
+			client, err = gitlab.NewClient(h.ep.API, tok, opts)
+		}
+		if err != nil {
+			h.initErr = err
+			return
+		}
+		h.client = client
 	})
 	return h.client, h.initErr
 }
@@ -73,9 +89,9 @@ func (h *host) throttled() {
 	}
 }
 
-// fail returns the error a repository fails with. A rejected or unreadable token latches
-// the host: no further request is sent to it, and every one of its rows carries the first
-// such error, so Latched can report the host once.
+// fail returns the error a repository fails with. A rejected or unreadable token, or an
+// exhausted allowance, latches the host: no further request is sent to it, and every one
+// of its rows carries the first such error, so Latched can report the host once.
 func (h *host) fail(err error) error {
 	if !latches(err) {
 		return err
@@ -96,7 +112,8 @@ func (h *host) latchedErr() error {
 
 // latches reports whether err stops every request to its host.
 func latches(err error) bool {
-	return errors.Is(err, gitlab.ErrUnauthorized) || errors.Is(err, token.ErrMissing) || errors.Is(err, token.ErrCommand)
+	return errors.Is(err, forge.ErrUnauthorized) || errors.Is(err, forge.ErrRateLimit) ||
+		errors.Is(err, token.ErrMissing) || errors.Is(err, token.ErrCommand)
 }
 
 // Fetch fetches every repository concurrently, at most ReposPerHost at a time per host, so
@@ -160,18 +177,18 @@ func fetchRepo(ctx context.Context, r Repo, h *host, cfg FetchConfig) status.Row
 	if branch == "" {
 		branch = p.DefaultBranch
 	}
-	fields := status.Collect(ctx, client.ForProject(p.ID), status.Request{
+	fields := status.Collect(ctx, client.Source(p), status.Request{
 		Fields:      cfg.Fields,
 		Branch:      branch,
 		ActiveSince: time.Now().AddDate(0, 0, -cfg.ActiveDays),
 		Timeout:     cfg.Timeout,
 	})
-	if err := gitlab.RefreshError(fields); err != nil {
+	if err := forge.RefreshError(fields); err != nil {
 		return failedRow(r, cfg, h.fail(err))
 	}
 	logFields(cfg.Log, r.Rel, fields)
 	return status.Row{Dir: r.Rel, Snapshot: status.Snapshot{
-		Project:   status.Project{Path: p.Path, WebURL: p.WebURL, Archived: p.Archived},
+		Project:   status.Project{Path: p.Path, WebURL: p.WebURL, Archived: p.Archived, Platform: r.Endpoint.Platform},
 		Branch:    branch,
 		Fields:    fields,
 		FetchedAt: time.Now(),
@@ -185,7 +202,7 @@ func failedRow(r Repo, cfg FetchConfig, err error) status.Row {
 	for i, name := range cfg.Fields {
 		fields[i].Name = name
 	}
-	project := status.Project{Path: r.Checkout.Remote.Path}
+	project := status.Project{Path: r.Checkout.Remote.Path, Platform: r.Endpoint.Platform}
 	if r.Endpoint.API != nil {
 		project.WebURL = strings.TrimSuffix(r.Endpoint.API.String(), "/") + "/" + project.Path
 	}
@@ -217,10 +234,10 @@ var failures = []struct {
 }{
 	{token.ErrMissing, status.FailureAuth},
 	{token.ErrCommand, status.FailureAuth},
-	{gitlab.ErrUnauthorized, status.FailureAuth},
-	{gitlab.ErrForbidden, status.FailureAuth},
-	{gitlab.ErrProjectNotFound, status.FailureNotFound},
-	{gitlab.ErrNetwork, status.FailureNetwork},
+	{forge.ErrUnauthorized, status.FailureAuth},
+	{forge.ErrForbidden, status.FailureAuth},
+	{forge.ErrNotFound, status.FailureNotFound},
+	{forge.ErrNetwork, status.FailureNetwork},
 }
 
 // Classify gives the failure class of a row error: "" for nil, FailureError for anything

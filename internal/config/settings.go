@@ -57,7 +57,7 @@ type Settings struct {
 	Remote        string
 	Project       string   // group/…/name or numeric ID; "" = detect
 	Host          *url.URL // --host; nil = detect
-	FallbackHost  *url.URL // GITLAB_HOST, used only when the host cannot be detected
+	FallbackHost  *url.URL // GITLAB_HOST, used only when the host cannot be detected; never github.com
 	Fields        []status.FieldName
 	Output        Output
 	Color         bool
@@ -186,6 +186,9 @@ func (s *Settings) validate() error {
 		return fmt.Errorf("%w --project %q: use group/name or a numeric ID", ErrInvalid, s.Project)
 	case s.Depth < 1:
 		return fmt.Errorf("%w --depth %d: minimum is 1", ErrInvalid, s.Depth)
+	case s.FallbackHost != nil && hostKey(s.FallbackHost.Host) == gitHubCom:
+		// GITLAB_HOST carries GITLAB_TOKEN: it must never reach github.com (FR-003).
+		return invalidf("GITLAB_HOST %s is a GitHub host: unset it, and pass --host https://github.com outside a clone", s.FallbackHost)
 	}
 	return nil
 }

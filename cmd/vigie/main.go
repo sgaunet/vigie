@@ -1,4 +1,5 @@
-// Command vigie prints a one-line status of the GitLab project behind a git clone.
+// Command vigie prints a one-line status of the GitLab project or GitHub repository behind a
+// git clone.
 package main
 
 import (

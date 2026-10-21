@@ -1,5 +1,5 @@
-DIR        PROJECT                BRANCHES  PIPELINES  LAST               MRS  ISSUES
-api        backend/api            12/42     2r/1p      ok main 3m         5    17
-legacy     group/legacy           ! not found
-tools/cli  tools/cli              3/3       0r/0p      fail fix-login 1h  0    2
-web        frontend/web archived  1/1       0r/0p      none main          0    –
+DIR        PLATFORM  PROJECT                BRANCHES  PIPELINES  LAST               MRS  ISSUES
+api        gitlab    backend/api            12/42     2r/1p      ok main 3m         5    17
+legacy     gitlab    group/legacy           ! not found
+tools/cli  gitlab    tools/cli              3/3       0r/0p      fail fix-login 1h  0    2
+web        gitlab    frontend/web archived  1/1       0r/0p      none main          0    –

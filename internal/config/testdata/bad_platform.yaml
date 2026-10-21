@@ -1,0 +1,3 @@
+hosts:
+  git.corp:
+    platform: gitea

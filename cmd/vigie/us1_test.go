@@ -74,14 +74,19 @@ func (e *e2e) run(t *testing.T, args ...string) (string, string, int) {
 	return checkNoToken(t)(runVigie(t, e.repo, e.env, args...))
 }
 
-// checkNoToken asserts the token appears in neither stream (SC-003) and that a failed
-// run printed nothing on stdout.
-func checkNoToken(t *testing.T) func(string, string, int) (string, string, int) {
+// checkNoToken asserts the token values (default: e2eToken) appear in neither stream
+// (SC-003) and that a failed run printed nothing on stdout.
+func checkNoToken(t *testing.T, tokens ...string) func(string, string, int) (string, string, int) {
 	t.Helper()
+	if len(tokens) == 0 {
+		tokens = []string{e2eToken}
+	}
 	return func(out, errOut string, code int) (string, string, int) {
 		t.Helper()
-		if strings.Contains(out, e2eToken) || strings.Contains(errOut, e2eToken) {
-			t.Fatalf("token leaked: stdout=%q stderr=%q", out, errOut)
+		for _, tok := range tokens {
+			if strings.Contains(out, tok) || strings.Contains(errOut, tok) {
+				t.Fatalf("token leaked: stdout=%q stderr=%q", out, errOut)
+			}
 		}
 		if code != 0 && out != "" {
 			t.Fatalf("exit %d with stdout %q", code, out)

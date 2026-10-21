@@ -14,24 +14,86 @@ import (
 // commandTimeout bounds a token_command run (research R9).
 var commandTimeout = 5 * time.Second
 
-// Resolve returns the token from src (an environment variable, or a command printing the
-// token), else from GITLAB_TOKEN in env.
+// Resolve returns the token from src: its environment variable, else its command printing
+// the token, else the first non-empty variable of src.Vars in env.
 func Resolve(ctx context.Context, src Source, env map[string]string) (Token, error) {
 	switch {
 	case src.Env != "":
-		return fromEnv(env, src.Env)
+		v := strings.TrimSpace(env[src.Env])
+		if v == "" {
+			return Token{}, &missingError{msg: src.Env + " is not set: " + src.createHint()}
+		}
+		return New(v), nil
 	case len(src.Command) > 0:
 		return fromCommand(ctx, src.Command, env)
 	}
-	return fromEnv(env, "GITLAB_TOKEN")
+	vars := src.vars()
+	for _, name := range vars {
+		if v := strings.TrimSpace(env[name]); v != "" {
+			return New(v), nil
+		}
+	}
+	verb := "is"
+	if len(vars) > 1 {
+		verb = "are"
+	}
+	return Token{}, &missingError{msg: fmt.Sprintf("%s %s not set: %s", strings.Join(vars, " and "), verb, src.varsHint())}
 }
 
-func fromEnv(env map[string]string, name string) (Token, error) {
-	v := strings.TrimSpace(env[name])
-	if v == "" {
-		return Token{}, fmt.Errorf("%s %w: create a token with the read_api scope and export it", name, ErrMissing)
+// Configured reports whether src names a token source at all: a token_env (even unset), a
+// token_command (never run here), or a set default variable. A scan skips a GitHub host
+// whose source is not configured, without any request.
+func (src Source) Configured(env map[string]string) bool {
+	if src.Env != "" || len(src.Command) > 0 {
+		return true
 	}
-	return New(v), nil
+	for _, name := range src.vars() {
+		if strings.TrimSpace(env[name]) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// missingError is a token source with nothing in it. It wraps ErrMissing, whose text it
+// does not repeat, so a plural can read "are not set".
+type missingError struct{ msg string }
+
+func (e *missingError) Error() string { return e.msg }
+func (e *missingError) Unwrap() error { return ErrMissing }
+
+// vars returns the default variables, GITLAB_TOKEN when none are set.
+func (src Source) vars() []string {
+	if len(src.Vars) == 0 {
+		return GitLabVars
+	}
+	return src.Vars
+}
+
+// convention names the kind of host the default variables serve, by their first variable.
+func (src Source) convention() string { return src.vars()[0] }
+
+// createHint tells how to create a token for this kind of host.
+func (src Source) createHint() string {
+	switch src.convention() {
+	case GitHubVars[0]:
+		return "create a fine-grained token with read access to the repository and export it"
+	case EnterpriseVars[0]:
+		return "create a token with read access to the repository and export it"
+	}
+	return "create a token with the read_api scope and export it"
+}
+
+// varsHint is the hint of a missing default variable: how to create a token, and the
+// config file alternatives on GitHub.
+func (src Source) varsHint() string {
+	switch src.convention() {
+	case GitHubVars[0]:
+		return src.createHint() + `, or set token_command: ["gh", "auth", "token"] for this host in the config file`
+	case EnterpriseVars[0]:
+		return src.createHint() + ", or set token_env or token_command for " + src.Host + " in the config file"
+	}
+	return src.createHint()
 }
 
 // fromCommand runs argv without a shell and reads the token from its stdout. Neither its

@@ -20,11 +20,11 @@ func rowLine(t *testing.T, out, dir string) string {
 	return ""
 }
 
-// complete asserts a row shows every fixture value.
+// complete asserts a row shows every fixture value, after DIR, PLATFORM and PROJECT.
 func complete(t *testing.T, line string) {
 	t.Helper()
 	cells := tableRows(t, "DIR \n"+line+"\n")[0]
-	if strings.Join(cells[2:], "|") != "2/3|2r/1p|ok main 3m|5|17" {
+	if strings.Join(cells[3:], "|") != "2/3|2r/1p|ok main 3m|5|17" {
 		t.Errorf("incomplete row %q", line)
 	}
 }

@@ -65,7 +65,7 @@ func newScanE2E(t *testing.T) *scanE2E {
 }
 
 // mainFolder fills the root with three listed clones on two hosts, a clone nested in one of
-// them, a hidden clone, a GitHub clone and a plain directory.
+// them, a hidden clone, a clone on a host vigie does not know and a plain directory.
 func (e *scanE2E) mainFolder(t *testing.T) {
 	t.Helper()
 	cloneAt(t, e.root, "api", "git@gitlab.test:backend/api.git", "main")
@@ -73,7 +73,7 @@ func (e *scanE2E) mainFolder(t *testing.T) {
 	cloneAt(t, e.root, "team/web", "git@gitlab.test:frontend/web.git", "main")
 	cloneAt(t, e.root, "team/web/vendor/lib", "git@gitlab.test:vendor/lib.git", "main")
 	cloneAt(t, e.root, ".hidden/x", "git@gitlab.test:hidden/x.git", "main")
-	cloneAt(t, e.root, "github", "https://github.com/git/git.git", "main")
+	cloneAt(t, e.root, "bitbucket", "https://bitbucket.org/git/git.git", "main")
 	if err := os.MkdirAll(filepath.Join(e.root, "plain", "sub"), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestE2EScanTable(t *testing.T) {
 			skipped = append(skipped, l)
 		}
 	}
-	if code != 0 || len(skipped) != 1 || !strings.Contains(skipped[0], "dir=github") || !strings.Contains(skipped[0], `reason="unknown host"`) {
+	if code != 0 || len(skipped) != 1 || !strings.Contains(skipped[0], "dir=bitbucket") || !strings.Contains(skipped[0], `reason="unknown host"`) {
 		t.Fatalf("-v: code=%d skipped=%q", code, skipped)
 	}
 }
@@ -167,11 +167,11 @@ func TestE2EScanTable(t *testing.T) {
 func TestE2EScanUnknownHostsOnly(t *testing.T) {
 	t.Parallel()
 	e := newScanE2E(t)
-	cloneAt(t, e.root, "a", "https://github.com/git/git.git", "main")
+	cloneAt(t, e.root, "a", "https://bitbucket.org/git/git.git", "main")
 	cloneAt(t, e.root, "b", "git@unknown.test:group/b.git", "main")
 	proxy, proxied := recordingProxy(t)
 	out, errOut, code := e.run(t, proxy)
-	want := `no GitLab repository found: 2 skipped (2 unknown host); add self-hosted hosts to the config file "hosts", or run with -v` + "\n"
+	want := `no GitLab or GitHub repository found: 2 skipped (2 unknown host); add self-hosted hosts to the config file "hosts", or run with -v` + "\n"
 	if code != 2 || out != "" || errOut != want {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
@@ -217,7 +217,7 @@ func TestE2EScanSameProjectTwice(t *testing.T) {
 	cloneAt(t, e.root, "b", "git@gitlab.test:backend/api.git", "main")
 	out, errOut, code := e.run(t, nil)
 	rows := tableRows(t, out)
-	if code != 0 || len(rows) != 2 || rows[0][0] != "a" || rows[1][0] != "b" || rows[0][1] != "backend/api" || rows[1][1] != "backend/api" {
+	if code != 0 || len(rows) != 2 || rows[0][0] != "a" || rows[1][0] != "b" || rows[0][2] != "backend/api" || rows[1][2] != "backend/api" {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
 }
@@ -229,7 +229,7 @@ func TestE2EScanWorktree(t *testing.T) {
 	git(t, a, "worktree", "add", "-q", "-b", "feature", filepath.Join(e.root, "b"))
 	out, errOut, code := e.run(t, nil)
 	rows := tableRows(t, out)
-	if code != 0 || len(rows) != 2 || rows[1][0] != "b" || rows[0][4] != "ok main 3m" || rows[1][4] != "fail feature 1h" {
+	if code != 0 || len(rows) != 2 || rows[1][0] != "b" || rows[0][5] != "ok main 3m" || rows[1][5] != "fail feature 1h" {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
 }

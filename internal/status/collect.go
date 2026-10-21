@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// Source fetches the metrics of one project. gitlab.ProjectClient implements it; tests use
-// fakes.
+// Source fetches the metrics of one project. The gitlab and github clients implement it
+// (gitlab.ProjectClient and the github repository source); tests use fakes.
 type Source interface {
 	Branches(ctx context.Context, activeSince time.Time) (Branches, error)
 	Pipelines(ctx context.Context) (Pipelines, error)

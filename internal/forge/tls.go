@@ -1,4 +1,4 @@
-package gitlab
+package forge
 
 import (
 	"crypto/tls"

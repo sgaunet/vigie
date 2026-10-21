@@ -21,10 +21,11 @@ const (
 	ReasonNoRemote    Reason = "no remote"
 	ReasonRemoteURL   Reason = "remote URL"
 	ReasonUnknownHost Reason = "unknown host"
+	ReasonNoToken     Reason = "no token" // a GitHub host without any token source
 	ReasonOtherHost   Reason = "other host"
 )
 
-var reasonOrder = []Reason{ReasonBare, ReasonUnreadable, ReasonNoRemote, ReasonRemoteURL, ReasonUnknownHost, ReasonOtherHost}
+var reasonOrder = []Reason{ReasonBare, ReasonUnreadable, ReasonNoRemote, ReasonRemoteURL, ReasonUnknownHost, ReasonNoToken, ReasonOtherHost}
 
 // Text is the reason as printed; remote is the --remote name.
 func (r Reason) Text(remote string) string {
@@ -88,7 +89,8 @@ func (s Summary) Line() string {
 }
 
 // Err is nil when something is listed. Otherwise it is the "nothing to list" error: the
-// v1 "not a git repository" when no clone was found at all, else ErrNoGitLab.
+// v1 "not a git repository" when no clone was found at all, else ErrNothingListed, whose
+// hint points at the GitHub token when clones were skipped for lack of one.
 func (s Summary) Err(depth int) error {
 	switch {
 	case s.Listed > 0:
@@ -96,8 +98,10 @@ func (s Summary) Err(depth int) error {
 	case s.Found == 0:
 		return fmt.Errorf("%w: no clone found below it either (depth %d); run vigie in a clone or a folder of clones, or pass --project and --host",
 			repo.ErrNotRepository, depth)
+	case s.Skipped[ReasonNoToken] > 0:
+		return fmt.Errorf("%w: %s; export GH_TOKEN for github.com clones, or run with -v", ErrNothingListed, s.Skips())
 	}
-	return fmt.Errorf(`%w: %s; add self-hosted hosts to the config file "hosts", or run with -v`, ErrNoGitLab, s.Skips())
+	return fmt.Errorf(`%w: %s; add self-hosted hosts to the config file "hosts", or run with -v`, ErrNothingListed, s.Skips())
 }
 
 // Outcome is nil when at least one row was fetched, else an *AllFailedError.
@@ -112,7 +116,8 @@ func Outcome(rows []status.Row, sum Summary) error {
 	return &AllFailedError{Errs: errs, Skipped: sum}
 }
 
-// HostFailure is a host that rejected the token, or whose token could not be read.
+// HostFailure is a host that rejected the token, whose token could not be read, or whose
+// allowance is exhausted.
 type HostFailure struct {
 	Err  error
 	Rows int // repositories on that host

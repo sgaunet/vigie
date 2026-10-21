@@ -7,8 +7,8 @@ import (
 
 // Sentinel errors, both mapped to exit code 2.
 var (
-	ErrRoot     = errors.New("cannot scan")
-	ErrNoGitLab = errors.New("no GitLab repository found")
+	ErrRoot          = errors.New("cannot scan")
+	ErrNothingListed = errors.New("no GitLab or GitHub repository found")
 )
 
 // AllFailedError is the error of a scan where every listed row failed. It deliberately

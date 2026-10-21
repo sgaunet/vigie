@@ -47,6 +47,7 @@ func TestFingerprintDetectsChanges(t *testing.T) {
 		"field err":  func(s *status.Snapshot) { s.Fields[3].Err = errors.New("x") },
 		"err text":   func(s *status.Snapshot) { s.Fields[4].Err = errors.New("other") },
 		"project":    func(s *status.Snapshot) { s.Project.Path = "g/q" },
+		"platform":   func(s *status.Snapshot) { s.Project.Platform = status.PlatformGitHub },
 		"archived":   func(s *status.Snapshot) { s.Project.Archived = true },
 		"branch":     func(s *status.Snapshot) { s.Branch = "dev" },
 		"stale":      func(s *status.Snapshot) { s.Stale = true },

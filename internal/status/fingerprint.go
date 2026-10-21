@@ -5,12 +5,12 @@ import (
 	"strings"
 )
 
-// Fingerprint identifies the content of a snapshot for change detection (FR-031): project,
-// branch, field values and errors, and the stale flag. Fetch times, the stale-since time
+// Fingerprint identifies the content of a snapshot for change detection (FR-031): project
+// and its platform, branch, field values and errors, and the stale flag. Fetch times, the stale-since time
 // and the refresh error text are left out, so ages alone never count as a change.
 func (s Snapshot) Fingerprint() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%q %q %t %q %t|", s.Project.Path, s.Project.WebURL, s.Project.Archived, s.Branch, s.Stale)
+	fmt.Fprintf(&b, "%q %q %t %q %q %t|", s.Project.Path, s.Project.WebURL, s.Project.Archived, s.Project.Platform, s.Branch, s.Stale)
 	for _, f := range s.Fields {
 		fmt.Fprintf(&b, "%s %v %v %d %q %q %d %q %v %q;",
 			f.Name, f.Branches, f.Pipelines,

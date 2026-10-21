@@ -14,8 +14,9 @@ import (
 )
 
 // runScan lists the clones below s.Dir: walk, inspect, select, fetch, then one table on
-// stdout, and on stderr the summary and one line per host that rejected the token. When
-// every row failed, stdout gets nothing and stderr says why each one failed.
+// stdout, and on stderr the summary and one line per host that rejected the token or whose
+// allowance is exhausted. When every row failed, stdout gets nothing and stderr says why
+// each one failed.
 func runScan(ctx context.Context, s config.Settings, std IO, log *slog.Logger) error {
 	cands, skips, err := find(ctx, s)
 	if err != nil {
@@ -26,7 +27,7 @@ func runScan(ctx context.Context, s config.Settings, std IO, log *slog.Logger) e
 		return err
 	}
 	skips = append(skips, more...)
-	repos, more := scan.Select(inspected, s)
+	repos, more := scan.Select(inspected, s, std.Env)
 	skips = append(skips, more...)
 	for _, sk := range skips {
 		attrs := []any{"dir", sk.Rel, "reason", sk.Reason.Text(s.Remote)}

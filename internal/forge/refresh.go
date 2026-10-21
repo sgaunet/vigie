@@ -1,7 +1,8 @@
-package gitlab
+package forge
 
 import (
 	"errors"
+	"time"
 
 	"github.com/sgaunet/vigie/internal/status"
 )
@@ -30,4 +31,14 @@ func RefreshError(fields []status.FieldResult) error {
 		return first
 	}
 	return nil
+}
+
+// RetryAfter returns the delay the server asked for (Retry-After, or a rate-limit reset),
+// carried by any error in err's chain that has a RetryAfter method.
+func RetryAfter(err error) (time.Duration, bool) {
+	var d interface{ RetryAfter() time.Duration }
+	if errors.As(err, &d) && d.RetryAfter() > 0 {
+		return d.RetryAfter(), true
+	}
+	return 0, false
 }

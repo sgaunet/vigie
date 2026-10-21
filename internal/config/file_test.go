@@ -156,3 +156,64 @@ func TestConfigFileShapingKeys(t *testing.T) {
 		t.Fatalf("flags over file: %+v, %v", s, err)
 	}
 }
+
+func TestConfigFilePlatform(t *testing.T) {
+	t.Parallel()
+	s, err := loadFile(t, "platform.yaml", config.Overrides{}, nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cases := []struct {
+		key      string
+		platform status.Platform
+		env      string
+	}{
+		{"github.example.com", status.PlatformGitHub, "GHE_TOKEN"},
+		{"github-work", status.PlatformGitHub, "WORK_GH_TOKEN"}, // an api of https://github.com means github.com
+		{"gitlab.example.com", status.PlatformGitLab, ""},
+		{"old.example.com", status.PlatformGitLab, "OLD"}, // no platform means GitLab
+	}
+	for _, c := range cases {
+		p, ok := s.Profile(c.key)
+		if !ok || p.Platform != c.platform || p.Token.Env != c.env {
+			t.Errorf("%s: profile %+v, %v; want platform %s, token_env %q", c.key, p, ok, c.platform, c.env)
+		}
+	}
+
+	s, err = loadFile(t, "full.yaml", config.Overrides{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, p := range s.Hosts {
+		if p.Platform != status.PlatformGitLab {
+			t.Errorf("full.yaml %s: platform %q, want gitlab", key, p.Platform)
+		}
+	}
+}
+
+func TestConfigFilePlatformErrors(t *testing.T) {
+	t.Parallel()
+	const path = "/cfg/config.yaml"
+	cases := []struct {
+		name, yaml, want string
+	}{
+		{"bad_platform.yaml", "", "platform of host git.corp in config file " + path + ": use gitlab or github"},
+		{"platform_github_com.yaml", "", "platform of host github.com in config file " + path + ": github.com is always github"},
+		{"www", "hosts:\n  www.github.com:\n    platform: gitlab\n", "platform of host www.github.com in config file " + path + ": github.com is always github"},
+		{"alias", "hosts:\n  alias:\n    api: https://github.com\n    platform: gitlab\n", "platform of host alias in config file " + path + ": github.com is always github"},
+		{"dup_host.yaml", "", "hosts github.com and ssh.github.com in config file " + path + " name the same host: keep one"},
+		{"case", "hosts:\n  gitlab.example.com:\n    token_env: A\n  GitLab.example.com:\n    token_env: B\n", "hosts GitLab.example.com and gitlab.example.com in config file " + path + " name the same host: keep one"},
+	}
+	for _, c := range cases {
+		var err error
+		if c.yaml == "" {
+			_, err = loadFile(t, c.name, config.Overrides{}, nil)
+		} else {
+			fsys := fstest.MapFS{"cfg/config.yaml": {Data: []byte(c.yaml)}}
+			_, err = config.Load(config.Overrides{}, map[string]string{"VIGIE_CONFIG": path}, fsys)
+		}
+		if !errors.Is(err, config.ErrInvalid) || err.Error() != c.want {
+			t.Errorf("%s:\n got %v\nwant %s", c.name, err, c.want)
+		}
+	}
+}

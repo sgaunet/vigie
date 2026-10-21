@@ -135,8 +135,10 @@ func TestHelpText(t *testing.T) {
 	for _, want := range []string{
 		"Settings: flags > environment > config file > detected from the repository > defaults.",
 		"Host:     --host > detected from the remote (via config \"hosts\") > GITLAB_HOST (fallback only).",
-		"Token:    host entry token_env / token_command > GITLAB_TOKEN.",
-		"GITLAB_TOKEN", "GITLAB_HOST", "VIGIE_INTERVAL", "VIGIE_CONFIG", "NO_COLOR", "SSL_CERT_FILE",
+		"Token:    host entry token_env / token_command > GITLAB_TOKEN (GitLab),",
+		"GH_TOKEN > GITHUB_TOKEN (github.com),",
+		"GH_ENTERPRISE_TOKEN > GITHUB_ENTERPRISE_TOKEN (GitHub Enterprise Server).",
+		"GITLAB_TOKEN", "GH_TOKEN, GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN", "GITLAB_HOST", "VIGIE_INTERVAL", "VIGIE_CONFIG", "NO_COLOR", "SSL_CERT_FILE",
 		"--watch", "--interval", "--dir", "--remote", "--project", "--host", "--fields", "--output",
 		"--no-color", "--no-emoji", "--timeout", "--verbose", "--quiet", "--help", "--depth",
 		"  0  ", "  1  ", "  2  ", "  3  ", "  4  ", "  5  ",

@@ -38,9 +38,11 @@ linters:
             - $all
             - "!$test"
             - "!**/internal/gitlab/**"
+            - "!**/internal/forge/**"
+            - "!**/internal/github/**"
           deny:
             - pkg: net/http
-              desc: HTTP lives in internal/gitlab
+              desc: HTTP lives in internal/forge, internal/gitlab and internal/github
         exec:
           files:
             - $all

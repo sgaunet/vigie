@@ -9,7 +9,7 @@ import (
 	main "github.com/sgaunet/vigie/cmd/vigie"
 	"github.com/sgaunet/vigie/internal/cli"
 	"github.com/sgaunet/vigie/internal/config"
-	"github.com/sgaunet/vigie/internal/gitlab"
+	"github.com/sgaunet/vigie/internal/forge"
 	"github.com/sgaunet/vigie/internal/repo"
 	"github.com/sgaunet/vigie/internal/scan"
 	"github.com/sgaunet/vigie/internal/token"
@@ -17,26 +17,28 @@ import (
 
 func TestExitCode(t *testing.T) {
 	t.Parallel()
+	rateLimit := fmt.Errorf("%w x: %w", forge.ErrRateLimit, forge.ErrNetwork)
 	cases := map[error]int{
-		cli.ErrUsage:              2,
-		config.ErrInvalid:         2,
-		config.ErrTokenInFile:     2,
-		config.ErrInsecureHost:    2,
-		config.ErrNoHost:          2,
-		repo.ErrNotRepository:     2,
-		repo.ErrRemoteMissing:     2,
-		repo.ErrRemoteURL:         2,
-		gitlab.ErrInsecure:        2,
-		token.ErrMissing:          3,
-		token.ErrCommand:          3,
-		gitlab.ErrUnauthorized:    3,
-		gitlab.ErrForbidden:       3,
-		gitlab.ErrProjectNotFound: 4,
-		gitlab.ErrNetwork:         5,
-		scan.ErrRoot:              2,
-		scan.ErrNoGitLab:          2,
-		context.Canceled:          1,
-		errors.New("boom"):        1,
+		cli.ErrUsage:           2,
+		config.ErrInvalid:      2,
+		config.ErrTokenInFile:  2,
+		config.ErrInsecureHost: 2,
+		config.ErrNoHost:       2,
+		repo.ErrNotRepository:  2,
+		repo.ErrRemoteMissing:  2,
+		repo.ErrRemoteURL:      2,
+		forge.ErrInsecure:      2,
+		token.ErrMissing:       3,
+		token.ErrCommand:       3,
+		forge.ErrUnauthorized:  3,
+		forge.ErrForbidden:     3,
+		forge.ErrNotFound:      4,
+		forge.ErrNetwork:       5,
+		rateLimit:              5,
+		scan.ErrRoot:           2,
+		scan.ErrNothingListed:  2,
+		context.Canceled:       1,
+		errors.New("boom"):     1,
 	}
 	if got := main.ExitCode(nil); got != 0 {
 		t.Errorf("ExitCode(nil) = %d", got)
@@ -55,16 +57,16 @@ func TestExitCode(t *testing.T) {
 
 func TestExitCodeAllFailed(t *testing.T) {
 	t.Parallel()
-	unauthorized := fmt.Errorf("%w by gitlab.test (401)", gitlab.ErrUnauthorized)
+	unauthorized := fmt.Errorf("%w by gitlab.test (401)", forge.ErrUnauthorized)
 	cases := []struct {
 		errs []error
 		want int
 	}{
 		{[]error{unauthorized, token.ErrMissing}, 3},
-		{[]error{gitlab.ErrProjectNotFound, gitlab.ErrProjectNotFound}, 4},
-		{[]error{gitlab.ErrNetwork}, 5},
-		{[]error{config.ErrInsecureHost, gitlab.ErrInsecure}, 2},
-		{[]error{gitlab.ErrProjectNotFound, gitlab.ErrUnauthorized}, 1},
+		{[]error{forge.ErrNotFound, forge.ErrNotFound}, 4},
+		{[]error{forge.ErrNetwork}, 5},
+		{[]error{config.ErrInsecureHost, forge.ErrInsecure}, 2},
+		{[]error{forge.ErrNotFound, forge.ErrUnauthorized}, 1},
 		{[]error{errors.New("boom")}, 1},
 		{nil, 1},
 	}

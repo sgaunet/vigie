@@ -1,0 +1,5 @@
+DIR     PLATFORM  PROJECT       BRANCHES  PIPELINES  LAST          MRS  ISSUES
+gh/app  github    octo/app      3/5       1r/2p      fail main 3m  5    12
+gh/lib  github    octo/lib      3/5       1r/2p      fail main 3m  5    12
+gl/api  gitlab    backend/api   2/3       2r/1p      ok main 3m    5    17
+gl/web  gitlab    frontend/web  2/3       2r/1p      ok main 3m    5    17

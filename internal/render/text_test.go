@@ -41,7 +41,7 @@ func count(n int) status.Count { return status.Count{N: n} }
 // fullSnapshot is the example line of the CLI contract.
 func fullSnapshot() status.Snapshot {
 	return status.Snapshot{
-		Project: status.Project{Path: "group/sub/project", WebURL: "https://gitlab.com/group/sub/project"},
+		Project: status.Project{Path: "group/sub/project", WebURL: "https://gitlab.com/group/sub/project", Platform: status.PlatformGitLab},
 		Branch:  "main",
 		Fields: []status.FieldResult{
 			{Name: status.FieldBranches, Branches: status.Branches{Active: count(12), Total: count(42)}},
@@ -74,7 +74,7 @@ func TestTextFull(t *testing.T) {
 	if got := render.Text(fullSnapshot(), asciiPlain, now); got != "group/sub/project br 12/42 ci 2r/1p last:ok main 3m mr 5 is 17" {
 		t.Errorf("ascii line = %q", got)
 	}
-	if got := render.Text(fullSnapshot(), render.Style{Emoji: true}, now); got != "🗼 group/sub/project 🌿 12/42 ⚙️ 2r/1p ✅ main 3m 🔀 5 🐛 17" {
+	if got := render.Text(fullSnapshot(), render.Style{Emoji: true}, now); got != "🦊 group/sub/project 🌿 12/42 ⚙️ 2r/1p ✅ main 3m 🔀 5 🐛 17" {
 		t.Errorf("emoji line = %q", got)
 	}
 }
@@ -176,5 +176,36 @@ func TestTextPlainHasNoEscapes(t *testing.T) {
 		if r > 0x7f && r != '–' {
 			t.Fatalf("non-ASCII rune %q in plain output: %q", r, got)
 		}
+	}
+}
+
+// gitHubSnapshot is the fixture line of the GitHub fake server.
+func gitHubSnapshot() status.Snapshot {
+	return status.Snapshot{
+		Project: status.Project{Path: "octo/app", WebURL: "https://github.com/octo/app", Platform: status.PlatformGitHub},
+		Branch:  "main",
+		Fields: []status.FieldResult{
+			{Name: status.FieldBranches, Branches: status.Branches{Active: count(3), Total: count(5)}},
+			{Name: status.FieldPipelines, Pipelines: status.Pipelines{Running: count(1), Pending: count(2)}},
+			{Name: status.FieldLast, Last: status.LastPipeline{Status: status.PipelineFailed, Ref: "main", UpdatedAt: now.Add(-3 * time.Minute), WebURL: "https://github.com/octo/app/commit/c0ffee0000000000000000000000000000000000"}},
+			{Name: status.FieldMRs, Count: count(5)},
+			{Name: status.FieldIssues, Count: count(12)},
+		},
+		FetchedAt: now,
+	}
+}
+
+func TestTextPlatformIcon(t *testing.T) {
+	t.Parallel()
+	golden(t, "text_github_emoji_nocolor", render.Text(gitHubSnapshot(), render.Style{Emoji: true}, now))
+	golden(t, "text_github_ascii", render.Text(gitHubSnapshot(), asciiPlain, now))
+
+	s := fullSnapshot()
+	s.Project.Platform = ""
+	if got := render.Text(s, render.Style{Emoji: true}, now); !strings.HasPrefix(got, "🗼 group/sub/project ") {
+		t.Errorf("no platform: %q", got)
+	}
+	if render.CellWidth("🦊") != 2 || render.CellWidth("🐙") != 2 {
+		t.Errorf("icon widths = %d, %d", render.CellWidth("🦊"), render.CellWidth("🐙"))
 	}
 }

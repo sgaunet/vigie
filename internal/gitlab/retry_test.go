@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sgaunet/vigie/internal/forge"
 	"github.com/sgaunet/vigie/internal/gitlab"
 	"github.com/sgaunet/vigie/internal/gitlab/gitlabtest"
 	"github.com/sgaunet/vigie/internal/token"
@@ -29,7 +30,7 @@ func retryClient(t *testing.T, s *gitlabtest.Server, retry bool, throttled *atom
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := gitlab.Options{Insecure: true, Retry: retry}
+	opts := forge.Options{Insecure: true, Retry: retry}
 	if throttled != nil {
 		opts.OnThrottle = func() { throttled.Add(1) }
 	}
@@ -83,7 +84,7 @@ func TestRetryNotPastDeadline(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	_, err := retryClient(t, s, true, nil).Project(ctx, "group/app")
-	if !errors.Is(err, gitlab.ErrNetwork) || time.Since(start) > 500*time.Millisecond || len(s.Requests()) != 1 {
+	if !errors.Is(err, forge.ErrNetwork) || time.Since(start) > 500*time.Millisecond || len(s.Requests()) != 1 {
 		t.Fatalf("got %v after %v and %d requests", err, time.Since(start), len(s.Requests()))
 	}
 }
@@ -93,14 +94,14 @@ func TestRetryBounded(t *testing.T) {
 	s := newServer(t)
 	s.Set(gitlabtest.EndpointProject, gitlabtest.Behavior{Status: http.StatusTooManyRequests, Times: 10})
 	_, err := retryClient(t, s, true, nil).Project(context.Background(), "group/app")
-	if !errors.Is(err, gitlab.ErrNetwork) || len(s.Requests()) != 5 {
+	if !errors.Is(err, forge.ErrNetwork) || len(s.Requests()) != 5 {
 		t.Fatalf("got %v after %d requests, want ErrNetwork after 5", err, len(s.Requests()))
 	}
 }
 
 func TestRetryOnlyThrottling(t *testing.T) {
 	fastRetries(t)
-	for code, want := range map[int]error{http.StatusUnauthorized: gitlab.ErrUnauthorized, http.StatusNotFound: gitlab.ErrProjectNotFound} {
+	for code, want := range map[int]error{http.StatusUnauthorized: forge.ErrUnauthorized, http.StatusNotFound: forge.ErrNotFound} {
 		s := newServer(t)
 		s.Set(gitlabtest.EndpointProject, gitlabtest.Behavior{Status: code})
 		var throttled atomic.Int32
@@ -112,7 +113,7 @@ func TestRetryOnlyThrottling(t *testing.T) {
 	s := newServer(t)
 	s.Set(gitlabtest.EndpointProject, gitlabtest.Behavior{Status: http.StatusTooManyRequests, Times: 1})
 	_, err := retryClient(t, s, false, nil).Project(context.Background(), "group/app")
-	if !errors.Is(err, gitlab.ErrNetwork) || len(s.Requests()) != 1 {
+	if !errors.Is(err, forge.ErrNetwork) || len(s.Requests()) != 1 {
 		t.Fatalf("Retry off: got %v after %d requests", err, len(s.Requests()))
 	}
 }
@@ -125,7 +126,7 @@ func TestRetryWaitInterrupted(t *testing.T) {
 	time.AfterFunc(100*time.Millisecond, cancel)
 	start := time.Now()
 	_, err := retryClient(t, s, true, nil).Project(ctx, "group/app")
-	if !errors.Is(err, context.Canceled) || errors.Is(err, gitlab.ErrNetwork) || time.Since(start) > time.Second {
+	if !errors.Is(err, context.Canceled) || errors.Is(err, forge.ErrNetwork) || time.Since(start) > time.Second {
 		t.Fatalf("got %v after %v", err, time.Since(start))
 	}
 }

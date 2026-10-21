@@ -30,10 +30,16 @@ type watcher struct {
 
 func startWatch(t *testing.T, e *e2e, args ...string) *watcher {
 	t.Helper()
+	return startWatchIn(t, e.repo, e.env, args...)
+}
+
+// startWatchIn runs `vigie -w -i 2s` in dir with a clean environment plus env.
+func startWatchIn(t *testing.T, dir string, env []string, args ...string) *watcher {
+	t.Helper()
 	w := &watcher{lines: make(chan string, 100), done: make(chan struct{})}
 	w.cmd = exec.Command(binary, append([]string{"-w", "-i", "2s"}, args...)...)
-	w.cmd.Dir = e.repo
-	w.cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir()}, e.env...)
+	w.cmd.Dir = dir
+	w.cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir()}, env...)
 	w.cmd.Stderr = &lockedWriter{mu: &w.mu, w: &w.stderr}
 	out, err := w.cmd.StdoutPipe()
 	if err != nil {
@@ -82,7 +88,7 @@ func (w *watcher) next(t *testing.T, within time.Duration) string {
 	t.Helper()
 	select {
 	case l := <-w.lines:
-		if strings.Contains(l, e2eToken) {
+		if strings.Contains(l, e2eToken) || strings.Contains(l, ghToken) {
 			t.Fatalf("token leaked: %q", l)
 		}
 		return l

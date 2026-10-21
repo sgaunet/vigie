@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sgaunet/vigie/internal/forge"
 	"github.com/sgaunet/vigie/internal/status"
 )
 
@@ -31,6 +32,9 @@ type ProjectClient struct {
 func (c *Client) ForProject(id int64) *ProjectClient {
 	return &ProjectClient{c: c, prefix: "/projects/" + strconv.FormatInt(id, 10)}
 }
+
+// Source returns the metrics source of p; it implements forge.Client.
+func (c *Client) Source(p forge.Project) status.Source { return c.ForProject(p.ID) }
 
 type branch struct {
 	Commit struct {

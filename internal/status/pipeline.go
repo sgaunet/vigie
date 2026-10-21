@@ -1,7 +1,7 @@
 package status
 
 // PipelineStatus is the status of a GitLab pipeline, plus None (no pipeline) and Unknown
-// (a status this version does not know).
+// (a status this version does not know). GitHub workflow runs map onto the same values.
 type PipelineStatus string
 
 // Every GitLab pipeline status, then None and Unknown.

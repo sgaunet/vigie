@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/sgaunet/vigie/schema/status-v1.json",
   "title": "vigie status record, v1",
-  "description": "One object per line on stdout with --output json. Field objects are null when requested but unavailable, and absent when not requested with --fields. In scan mode (outside any clone) there is one object per listed repository, with dir set; a repository whose project could not be fetched has every requested field null, a single refresh error, and fetched_at set to the time of the attempt.",
+  "description": "One object per line on stdout with --output json. Field objects are null when requested but unavailable, and absent when not requested with --fields. In scan mode (outside any clone) there is one object per listed repository, with dir set; a repository whose project could not be fetched has every requested field null, a single refresh error, and fetched_at set to the time of the attempt. On GitHub, pipelines counts GitHub Actions workflow runs, last is the combined result of the workflow runs of the branch's latest commit that has any, and mrs counts pull requests.",
   "type": "object",
-  "required": ["project", "url", "archived", "branch", "fetched_at", "stale", "errors"],
+  "required": ["platform", "project", "url", "archived", "branch", "fetched_at", "stale", "errors"],
   "additionalProperties": false,
   "properties": {
-    "project": { "type": "string", "description": "path_with_namespace, e.g. group/sub/project" },
+    "platform": { "enum": ["gitlab", "github"], "description": "the platform hosting the project" },
+    "project": { "type": "string", "description": "GitLab: path_with_namespace, e.g. group/sub/project; GitHub: owner/repo" },
     "url": { "type": "string", "format": "uri" },
     "archived": { "type": "boolean" },
     "branch": { "type": "string", "description": "reporting branch: current, or default when HEAD is detached" },
@@ -55,10 +56,10 @@
                        "success", "failed", "canceled", "skipped", "manual", "scheduled",
                        "none", "unknown"]
             },
-            "id": { "type": "integer" },
+            "id": { "type": "integer", "description": "GitLab pipeline ID; absent on GitHub, where the result combines several workflow runs" },
             "ref": { "type": "string" },
             "updated_at": { "type": "string", "format": "date-time" },
-            "web_url": { "type": "string", "format": "uri" }
+            "web_url": { "type": "string", "format": "uri", "description": "GitLab: the pipeline; GitHub: the commit whose runs make the result" }
           }
         }
       ]

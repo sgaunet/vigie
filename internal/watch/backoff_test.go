@@ -37,9 +37,13 @@ func TestBackoffRetryAfter(t *testing.T) {
 	if got := b.Next(); got != 20*time.Second {
 		t.Fatalf("small hint: %v", got)
 	}
-	b.Failure(time.Hour)
-	if got := b.Next(); got != 5*time.Minute {
-		t.Fatalf("Retry-After capped: %v", got)
+	b.Failure(50 * time.Minute) // GitHub's reset can be up to an hour away
+	if got := b.Next(); got != 50*time.Minute {
+		t.Fatalf("Retry-After 50m: %v", got)
+	}
+	b.Failure(2 * time.Hour)
+	if got := b.Next(); got != time.Hour || watch.MaxRetryAfter != time.Hour {
+		t.Fatalf("Retry-After capped: %v (MaxRetryAfter %v)", got, watch.MaxRetryAfter)
 	}
 	b.Success()
 	if got := b.Next(); got != 5*time.Second {

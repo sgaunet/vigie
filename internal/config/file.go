@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,11 +22,12 @@ import (
 	"github.com/sgaunet/vigie/internal/token"
 )
 
-// HostProfile describes how to reach one GitLab instance.
+// HostProfile describes how to reach one GitLab or GitHub instance.
 type HostProfile struct {
 	API      *url.URL // web base URL; nil means https://<key>
 	Token    token.Source
-	Insecure bool // allows an http:// API
+	Insecure bool            // allows an http:// API
+	Platform status.Platform // GitHub for platform: github or a github.com entry, else GitLab
 }
 
 // fileConfig is the YAML schema. Unknown keys are rejected.
@@ -41,6 +44,7 @@ type fileHost struct {
 	TokenEnv     string   `yaml:"token_env"`
 	TokenCommand []string `yaml:"token_command"`
 	Insecure     bool     `yaml:"insecure"`
+	Platform     string   `yaml:"platform"`
 }
 
 // HostFS returns the host filesystem in the form Load expects: rooted at "/", or at the
@@ -189,12 +193,19 @@ func (s *Settings) applyFile(cfg fileConfig, p string) error {
 		}
 		s.ActiveDays = *cfg.ActiveDays
 	}
-	for key, h := range cfg.Hosts {
-		prof, err := h.profile(key, p)
+	// Sorted, so that errors never depend on map order.
+	named := map[string]string{} // host key → hosts key as written
+	for _, key := range slices.Sorted(maps.Keys(cfg.Hosts)) {
+		k := hostKey(key)
+		if first, ok := named[k]; ok {
+			return invalidf("hosts %s and %s in config file %s name the same host: keep one", first, key, p)
+		}
+		named[k] = key
+		prof, err := cfg.Hosts[key].profile(key, p)
 		if err != nil {
 			return err
 		}
-		s.Hosts[hostKey(key)] = prof
+		s.Hosts[k] = prof
 	}
 	return nil
 }
@@ -214,29 +225,117 @@ func (h fileHost) profile(key, p string) (HostProfile, error) {
 		}
 		prof.API = u
 	}
+	dotCom := hostKey(key) == gitHubCom || isGitHubCom(prof.API)
+	switch status.Platform(h.Platform) {
+	case "", status.PlatformGitLab:
+		if h.Platform != "" && dotCom {
+			return HostProfile{}, invalidf("platform of host %s in config file %s: github.com is always github", key, p)
+		}
+		prof.Platform = status.PlatformGitLab
+	case status.PlatformGitHub:
+		prof.Platform = status.PlatformGitHub
+	default:
+		return HostProfile{}, invalidf("platform of host %s in config file %s: use gitlab or github", key, p)
+	}
+	if dotCom {
+		prof.Platform = status.PlatformGitHub
+	}
 	return prof, nil
 }
 
-// hostKey normalises a host name for profile lookup: lowercase, no port.
+// gitHubCom is the host key of the github.com family.
+const gitHubCom = "github.com"
+
+// hostKey normalises a host name for profile lookup: lowercase, no port, and the names of
+// the github.com family (www, ssh, api) mapped to github.com.
 func hostKey(h string) string {
 	h = strings.ToLower(h)
 	if u, err := url.Parse("//" + h); err == nil && u.Hostname() != "" {
-		return u.Hostname()
+		h = u.Hostname()
+	}
+	switch h {
+	case "www.github.com", "ssh.github.com", "api.github.com":
+		return gitHubCom
 	}
 	return h
 }
 
-// Profile returns the host profile whose key, or else whose api host, matches host
-// (port ignored).
-func (s Settings) Profile(host string) (HostProfile, bool) {
+// isGitHubCom reports whether u is https://github.com: an entry with that api is github.com
+// under another name, such as an SSH alias.
+func isGitHubCom(u *url.URL) bool {
+	return u != nil && strings.EqualFold(u.Scheme, "https") && strings.EqualFold(u.Hostname(), gitHubCom) &&
+		(u.Port() == "" || u.Port() == "443") && u.Path == ""
+}
+
+// entry is one hosts entry: its key (lowercase, no port) and its profile.
+type entry struct {
+	key  string
+	prof HostProfile
+}
+
+// candidates returns the hosts entries that may serve host (port ignored): the one keyed by
+// it, else, outside the github.com family, every entry whose api has that host, by key.
+func (s Settings) candidates(host string) []entry {
 	key := hostKey(host)
 	if p, ok := s.Hosts[key]; ok {
-		return p, true
+		return []entry{{key, p}}
 	}
-	for _, p := range s.Hosts {
+	if key == gitHubCom {
+		return nil
+	}
+	var out []entry
+	for k, p := range s.Hosts {
 		if p.API != nil && hostKey(p.API.Host) == key {
-			return p, true
+			out = append(out, entry{k, p})
 		}
 	}
-	return HostProfile{}, false
+	slices.SortFunc(out, func(a, b entry) int { return strings.Compare(a.key, b.key) })
+	return out
+}
+
+// Profile returns the host profile whose key, or else whose api host, matches host (port
+// ignored). A github.com-family host matches an entry by its key only, and an api host
+// shared by several entries matches none.
+func (s Settings) Profile(host string) (HostProfile, bool) {
+	c := s.candidates(host)
+	if len(c) != 1 {
+		return HostProfile{}, false
+	}
+	return c[0].prof, true
+}
+
+// entryFor returns the entry serving host, and whether there is one. When several entries
+// share the api host, base (--host or GITLAB_HOST) picks the one whose api it is; otherwise
+// the choice is the user's, and an error says so.
+func (s Settings) entryFor(host string, base *url.URL) (entry, bool, error) {
+	c := s.candidates(host)
+	if len(c) > 1 && base != nil {
+		if same := slices.DeleteFunc(slices.Clone(c), func(e entry) bool { return !sameBase(e.prof.API, base) }); len(same) == 1 {
+			c = same
+		}
+	}
+	switch len(c) {
+	case 0:
+		return entry{}, false, nil
+	case 1:
+		return c[0], true, nil
+	}
+	keys := make([]string, len(c))
+	for i, e := range c {
+		keys[i] = e.key
+	}
+	which := "remote host"
+	if base != nil {
+		which = "host"
+	}
+	k := hostKey(host)
+	return entry{}, false, invalidf("%s %s matches hosts %s in the config file: add an entry keyed %s", which, k, joinAnd(keys), k)
+}
+
+// joinAnd gives "a and b", or "a, b and c".
+func joinAnd(s []string) string {
+	if len(s) < 2 {
+		return strings.Join(s, "")
+	}
+	return strings.Join(s[:len(s)-1], ", ") + " and " + s[len(s)-1]
 }

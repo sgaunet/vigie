@@ -1,0 +1,11 @@
+hosts:
+  github.example.com:
+    platform: github
+    token_env: GHE_TOKEN
+  github-work:
+    api: https://github.com
+    token_env: WORK_GH_TOKEN
+  gitlab.example.com:
+    platform: gitlab
+  old.example.com:
+    token_env: OLD

@@ -1,0 +1,5 @@
+hosts:
+  github.com:
+    token_env: A
+  ssh.github.com:
+    token_env: B

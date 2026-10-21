@@ -19,7 +19,7 @@ func TestDisplayTTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := out.String()
-	if !strings.HasPrefix(got, "\x1b[?25l\r\x1b[2K🗼 group/sub/project") || strings.Contains(got, "\n") {
+	if !strings.HasPrefix(got, "\x1b[?25l\r\x1b[2K🦊 group/sub/project") || strings.Contains(got, "\n") {
 		t.Fatalf("first draw = %q", got)
 	}
 

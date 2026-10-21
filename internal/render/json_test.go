@@ -54,9 +54,13 @@ func jsonSnapshots() map[string]status.Snapshot {
 	archived.Project.Archived = true
 	archived.Fields = nil
 
+	runsCapped := gitHubSnapshot()
+	runsCapped.Fields[1] = status.FieldResult{Name: status.FieldPipelines, Err: errors.New("more than 1,000 workflow runs: GitHub does not report an exact count")}
+
 	return map[string]status.Snapshot{
 		"json_full": full, "json_unavailable": unavailable, "json_capped": capped,
 		"json_none": none, "json_subset": subset, "json_stale": stale, "json_archived": archived,
+		"json_github": gitHubSnapshot(), "json_runs_capped": runsCapped,
 	}
 }
 
@@ -83,11 +87,14 @@ func jsonRowOf(t *testing.T, r status.Row) string {
 	return buf.String()
 }
 
-// jsonRows are the scan rows of the JSON contract: one fetched, one failed.
+// jsonRows are the scan rows of the JSON contract: one fetched, one failed on each platform.
 func jsonRows() map[string]status.Row {
+	gone := failedRow("gone", "acme/gone", status.FailureNotFound)
+	gone.Snapshot.Project = status.Project{Path: "acme/gone", WebURL: "https://github.com/acme/gone", Platform: status.PlatformGitHub}
 	return map[string]status.Row{
-		"json_row_ok":     {Dir: "sub/project", Snapshot: fullSnapshot()},
-		"json_row_failed": failedRow("legacy", "group/legacy", status.FailureNotFound),
+		"json_row_ok":            {Dir: "sub/project", Snapshot: fullSnapshot()},
+		"json_row_failed":        failedRow("legacy", "group/legacy", status.FailureNotFound),
+		"json_row_github_failed": gone,
 	}
 }
 
@@ -157,6 +164,11 @@ func TestJSONShapes(t *testing.T) {
 	}
 	if _, ok := m["stale_since"]; ok {
 		t.Error("stale_since present on a fresh record")
+	}
+
+	m = decode(t, jsonOf(t, snaps["json_github"]))
+	if last := m["last"].(map[string]any); m["platform"] != "github" || last["id"] != nil {
+		t.Errorf("GitHub record: platform %v, last %v", m["platform"], last)
 	}
 
 	m = decode(t, jsonOf(t, snaps["json_stale"]))
