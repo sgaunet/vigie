@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"testing"
@@ -117,6 +118,29 @@ func TestLoadInvalid(t *testing.T) {
 		}
 		if _, err := load(t, c.ov, env); !errors.Is(err, config.ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", c.name, err)
+		}
+	}
+}
+
+func intp(n int) *int { return &n }
+
+func TestLoadDepth(t *testing.T) {
+	t.Parallel()
+	s, err := load(t, config.Overrides{}, map[string]string{})
+	if err != nil || s.Depth != config.DefaultDepth || config.DefaultDepth != 4 {
+		t.Fatalf("default depth = %d (DefaultDepth %d), %v", s.Depth, config.DefaultDepth, err)
+	}
+	s, err = load(t, config.Overrides{Depth: intp(2)}, map[string]string{})
+	if err != nil || s.Depth != 2 {
+		t.Fatalf("--depth 2: %d, %v", s.Depth, err)
+	}
+	for _, n := range []int{0, -1} {
+		_, err := load(t, config.Overrides{Depth: intp(n)}, map[string]string{})
+		if !errors.Is(err, config.ErrInvalid) {
+			t.Fatalf("--depth %d: got %v, want ErrInvalid", n, err)
+		}
+		if want := fmt.Sprintf("invalid --depth %d: minimum is 1", n); err.Error() != want {
+			t.Fatalf("--depth %d: message = %q, want %q", n, err, want)
 		}
 	}
 }

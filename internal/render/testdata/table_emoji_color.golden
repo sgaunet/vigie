@@ -1,0 +1,5 @@
+[1mDIR[0m        [1mPROJECT[0m                [1mBRANCHES[0m  [1mPIPELINES[0m  [1mLAST[0m             [1mMRS[0m  [1mISSUES[0m
+api        [1mbackend/api[0m            12/42     [34m2r/1p[0m      [32m✅ main 3m[0m       [1m5[0m    [1m17[0m
+legacy     [1mgroup/legacy[0m           [33m⚠ not found[0m
+tools/cli  [1mtools/cli[0m              3/3       [2m0r/0p[0m      [1;31m❌ fix-login 1h[0m  [2m0[0m    [1m2[0m
+web        [1mfrontend/web[0m [90marchived[0m  [2m1/1[0m       [2m0r/0p[0m      [2m∅ main[0m           [2m0[0m    [2m–[0m

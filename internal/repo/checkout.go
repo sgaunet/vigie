@@ -45,7 +45,7 @@ func Detect(ctx context.Context, dir, remote string, log *slog.Logger) (Checkout
 
 func notRepository(err error) error {
 	if errors.Is(err, exec.ErrNotFound) {
-		return fmt.Errorf("%w: git is not installed, install it or pass --project and --host", ErrNotRepository)
+		return fmt.Errorf("%w: git is %w, install it or pass --project and --host", ErrNotRepository, ErrNoGit)
 	}
 	return fmt.Errorf("%w: run vigie inside a clone, or pass --project and --host", ErrNotRepository)
 }

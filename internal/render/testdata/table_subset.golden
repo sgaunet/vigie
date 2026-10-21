@@ -1,0 +1,5 @@
+DIR        PROJECT                LAST               MRS
+api        backend/api            ok main 3m         5
+legacy     group/legacy           ! not found
+tools/cli  tools/cli              fail fix-login 1h  0
+web        frontend/web archived  none main          0

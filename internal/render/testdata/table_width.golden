@@ -1,0 +1,24 @@
+width 0
+DIR                    PROJECT                    BRANCHES  PIPELINES  LAST        MRS  ISSUES
+src/acme/platform/api  acme/platform/backend/api  12/42     2r/1p      ok main 3m  5    17
+src/tools/cli          tools/cli                  12/42     2r/1p      ok main 3m  5    17
+width 100
+DIR                    PROJECT                    BRANCHES  PIPELINES  LAST        MRS  ISSUES
+src/acme/platform/api  acme/platform/backend/api  12/42     2r/1p      ok main 3m  5    17
+src/tools/cli          tools/cli                  12/42     2r/1p      ok main 3m  5    17
+width 94
+DIR                    PROJECT                    BRANCHES  PIPELINES  LAST        MRS  ISSUES
+src/acme/platform/api  acme/platform/backend/api  12/42     2r/1p      ok main 3m  5    17
+src/tools/cli          tools/cli                  12/42     2r/1p      ok main 3m  5    17
+width 80
+DIR                    PROJECT    BRANCHES  PIPELINES  LAST        MRS  ISSUES
+src/acme/platform/api  …/api      12/42     2r/1p      ok main 3m  5    17
+src/tools/cli          tools/cli  12/42     2r/1p      ok main 3m  5    17
+width 70
+DIR             PROJECT  BRANCHES  PIPELINES  LAST        MRS  ISSUES
+…/platform/api  …/api    12/42     2r/1p      ok main 3m  5    17
+src/tools/cli   …/cli    12/42     2r/1p      ok main 3m  5    17
+width 50
+DIR  PROJECT  BRANCHES  PIPELINES  LAST        MRS  ISSUES
+…pi  …/api    12/42     2r/1p      ok main 3m  5    17
+…li  …/cli    12/42     2r/1p      ok main 3m  5    17

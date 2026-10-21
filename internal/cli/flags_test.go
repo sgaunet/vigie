@@ -66,6 +66,23 @@ func TestParseEqualsForm(t *testing.T) {
 	}
 }
 
+func TestParseDepth(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"--depth", "3"}, {"--depth=3"}} {
+		_, ov, err := cli.Parse(args)
+		if err != nil || ov.Depth == nil || *ov.Depth != 3 {
+			t.Errorf("Parse(%v) = %+v, %v", args, ov, err)
+		}
+	}
+	if _, ov, err := cli.Parse(nil); err != nil || ov.Depth != nil {
+		t.Errorf("no --depth: %+v, %v", ov, err)
+	}
+	// The range is checked by config, so --depth 0 fails with its message in every mode.
+	if _, ov, err := cli.Parse([]string{"--depth", "0"}); err != nil || ov.Depth == nil || *ov.Depth != 0 {
+		t.Errorf("--depth 0: %+v, %v", ov, err)
+	}
+}
+
 func TestParseUsageErrors(t *testing.T) {
 	t.Parallel()
 	for _, args := range [][]string{
@@ -79,6 +96,8 @@ func TestParseUsageErrors(t *testing.T) {
 		{"version", "extra"},
 		{"version", "-o", "yaml"},
 		{"version", "--watch"},
+		{"--depth", "x"},
+		{"--depth", "1.5"},
 	} {
 		_, _, err := cli.Parse(args)
 		if !errors.Is(err, cli.ErrUsage) {
@@ -119,7 +138,7 @@ func TestHelpText(t *testing.T) {
 		"Token:    host entry token_env / token_command > GITLAB_TOKEN.",
 		"GITLAB_TOKEN", "GITLAB_HOST", "VIGIE_INTERVAL", "VIGIE_CONFIG", "NO_COLOR", "SSL_CERT_FILE",
 		"--watch", "--interval", "--dir", "--remote", "--project", "--host", "--fields", "--output",
-		"--no-color", "--no-emoji", "--timeout", "--verbose", "--quiet", "--help",
+		"--no-color", "--no-emoji", "--timeout", "--verbose", "--quiet", "--help", "--depth",
 		"  0  ", "  1  ", "  2  ", "  3  ", "  4  ", "  5  ",
 	} {
 		if !contains(h, want) {

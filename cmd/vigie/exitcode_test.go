@@ -11,6 +11,7 @@ import (
 	"github.com/sgaunet/vigie/internal/config"
 	"github.com/sgaunet/vigie/internal/gitlab"
 	"github.com/sgaunet/vigie/internal/repo"
+	"github.com/sgaunet/vigie/internal/scan"
 	"github.com/sgaunet/vigie/internal/token"
 )
 
@@ -32,6 +33,8 @@ func TestExitCode(t *testing.T) {
 		gitlab.ErrForbidden:       3,
 		gitlab.ErrProjectNotFound: 4,
 		gitlab.ErrNetwork:         5,
+		scan.ErrRoot:              2,
+		scan.ErrNoGitLab:          2,
 		context.Canceled:          1,
 		errors.New("boom"):        1,
 	}
@@ -42,6 +45,35 @@ func TestExitCode(t *testing.T) {
 		err := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", sentinel))
 		if got := main.ExitCode(err); got != want {
 			t.Errorf("ExitCode(%v) = %d, want %d", err, got, want)
+		}
+	}
+	noGit := fmt.Errorf("%w: git is %w", repo.ErrNotRepository, repo.ErrNoGit)
+	if got := main.ExitCode(noGit); got != 2 {
+		t.Errorf("ExitCode(no git) = %d, want 2", got)
+	}
+}
+
+func TestExitCodeAllFailed(t *testing.T) {
+	t.Parallel()
+	unauthorized := fmt.Errorf("%w by gitlab.test (401)", gitlab.ErrUnauthorized)
+	cases := []struct {
+		errs []error
+		want int
+	}{
+		{[]error{unauthorized, token.ErrMissing}, 3},
+		{[]error{gitlab.ErrProjectNotFound, gitlab.ErrProjectNotFound}, 4},
+		{[]error{gitlab.ErrNetwork}, 5},
+		{[]error{config.ErrInsecureHost, gitlab.ErrInsecure}, 2},
+		{[]error{gitlab.ErrProjectNotFound, gitlab.ErrUnauthorized}, 1},
+		{[]error{errors.New("boom")}, 1},
+		{nil, 1},
+	}
+	for _, c := range cases {
+		err := &scan.AllFailedError{Errs: c.errs}
+		for _, e := range []error{err, fmt.Errorf("outer: %w", err)} {
+			if got := main.ExitCode(e); got != c.want {
+				t.Errorf("ExitCode(%v of %v) = %d, want %d", e, c.errs, got, c.want)
+			}
 		}
 	}
 }

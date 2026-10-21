@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/sgaunet/vigie/schema/status-v1.json",
   "title": "vigie status record, v1",
-  "description": "One object per line on stdout with --output json. Field objects are null when requested but unavailable, and absent when not requested with --fields.",
+  "description": "One object per line on stdout with --output json. Field objects are null when requested but unavailable, and absent when not requested with --fields. In scan mode (outside any clone) there is one object per listed repository, with dir set; a repository whose project could not be fetched has every requested field null, a single refresh error, and fetched_at set to the time of the attempt.",
   "type": "object",
   "required": ["project", "url", "archived", "branch", "fetched_at", "stale", "errors"],
   "additionalProperties": false,
@@ -11,6 +11,7 @@
     "url": { "type": "string", "format": "uri" },
     "archived": { "type": "boolean" },
     "branch": { "type": "string", "description": "reporting branch: current, or default when HEAD is detached" },
+    "dir": { "type": "string", "minLength": 1, "description": "scan mode only: directory of the clone relative to the scanned folder, /-separated on every platform" },
     "branches": {
       "oneOf": [
         { "type": "null" },

@@ -9,20 +9,28 @@ Usage:
 Flags:
   -w, --watch             redraw the line until interrupted
   -i, --interval DURATION refresh interval in watch mode (default 5s, minimum 2s)
-  -C, --dir PATH          directory of the git clone (default .)
+  -C, --dir PATH          directory of the git clone, or folder to scan (default .)
   -r, --remote NAME       git remote to read (default origin)
   -p, --project PATH|ID   project path (group/sub/name) or numeric ID (default: detected)
-      --host URL          GitLab base URL, e.g. https://gitlab.example.com (default: detected)
+      --host URL          GitLab base URL, e.g. https://gitlab.example.com (default: detected);
+                          when scanning, only clones on this host are listed
+      --depth N           when scanning, levels below --dir to search (default 4)
   -f, --fields LIST       fields and their order (default branches,pipelines,last,mrs,issues)
   -o, --output FORMAT     text or json (default text)
       --no-color          disable colors
       --no-emoji          replace icons with short ASCII labels
-      --timeout DURATION  time budget of one whole refresh (default 10s)
+      --timeout DURATION  time budget of one whole refresh, per repository when scanning
+                          (default 10s)
   -v, --verbose           debug logs on stderr
   -q, --quiet             errors only on stderr (exclusive with --verbose)
   -h, --help              show this help
 
 Short flags cannot be bundled: write -w -v, not -wv.
+
+Folder of clones:
+  Outside any clone and without --project, vigie scans --dir for clones whose remote is on
+  a known GitLab host (gitlab.com, config "hosts", GITLAB_HOST) and prints one table row per
+  clone. No request is sent to any other host. --watch needs a single clone.
 
 Precedence:
   Settings: flags > environment > config file > detected from the repository > defaults.
@@ -60,3 +68,4 @@ Exit codes:
   3  authentication problem
   4  project not found
   5  network problem in one-shot mode (DNS, TLS, timeout, throttled, server error)
+  When scanning: 0 if any row was fetched; if all failed, their common code, else 1.

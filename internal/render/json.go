@@ -17,6 +17,7 @@ type jsonRecord struct {
 	URL        string          `json:"url"`
 	Archived   bool            `json:"archived"`
 	Branch     string          `json:"branch"`
+	Dir        string          `json:"dir,omitempty"`      // scan mode only
 	Branches   json.RawMessage `json:"branches,omitempty"` // nil = not requested, "null" = unavailable
 	Pipelines  json.RawMessage `json:"pipelines,omitempty"`
 	Last       json.RawMessage `json:"last,omitempty"`
@@ -62,32 +63,43 @@ var jsonNull = json.RawMessage("null")
 
 // JSON writes the snapshot as one JSON object followed by a newline.
 func JSON(w io.Writer, s status.Snapshot) error {
-	rec := jsonRecord{
-		Project:   s.Project.Path,
-		URL:       s.Project.WebURL,
-		Archived:  s.Project.Archived,
-		Branch:    s.Branch,
-		FetchedAt: timestamp(s.FetchedAt),
-		Stale:     s.Stale,
-		Errors:    []jsonError{},
+	rec, err := snapshotRecord(s)
+	if err != nil {
+		return err
 	}
+	return encode(w, rec)
+}
+
+// JSONRow writes one scan row as JSON writes a snapshot, plus dir. A failed row has every
+// requested field null and its error as the refresh error.
+func JSONRow(w io.Writer, r status.Row) error {
+	if !r.OK() {
+		rec := baseRecord(r.Snapshot)
+		rec.Dir = r.Dir
+		for _, f := range r.Snapshot.Fields {
+			rec.setField(f.Name, jsonNull)
+		}
+		if r.Err != nil {
+			rec.Errors = append(rec.Errors, jsonError{Field: "refresh", Reason: r.Err.Error()})
+		}
+		return encode(w, rec)
+	}
+	rec, err := snapshotRecord(r.Snapshot)
+	if err != nil {
+		return err
+	}
+	rec.Dir = r.Dir
+	return encode(w, rec)
+}
+
+func snapshotRecord(s status.Snapshot) (jsonRecord, error) {
+	rec := baseRecord(s)
 	for _, f := range s.Fields {
 		raw, err := fieldJSON(f)
 		if err != nil {
-			return err
+			return jsonRecord{}, err
 		}
-		switch f.Name {
-		case status.FieldBranches:
-			rec.Branches = raw
-		case status.FieldPipelines:
-			rec.Pipelines = raw
-		case status.FieldLast:
-			rec.Last = raw
-		case status.FieldMRs:
-			rec.MRs = raw
-		case status.FieldIssues:
-			rec.Issues = raw
-		}
+		rec.setField(f.Name, raw)
 		if f.Err != nil {
 			rec.Errors = append(rec.Errors, jsonError{Field: string(f.Name), Reason: f.Err.Error()})
 		}
@@ -98,6 +110,38 @@ func JSON(w io.Writer, s status.Snapshot) error {
 			rec.Errors = append(rec.Errors, jsonError{Field: "refresh", Reason: s.RefreshErr.Error()})
 		}
 	}
+	return rec, nil
+}
+
+// baseRecord fills the part of a record that does not depend on the fields.
+func baseRecord(s status.Snapshot) jsonRecord {
+	return jsonRecord{
+		Project:   s.Project.Path,
+		URL:       s.Project.WebURL,
+		Archived:  s.Project.Archived,
+		Branch:    s.Branch,
+		FetchedAt: timestamp(s.FetchedAt),
+		Stale:     s.Stale,
+		Errors:    []jsonError{},
+	}
+}
+
+func (rec *jsonRecord) setField(name status.FieldName, raw json.RawMessage) {
+	switch name {
+	case status.FieldBranches:
+		rec.Branches = raw
+	case status.FieldPipelines:
+		rec.Pipelines = raw
+	case status.FieldLast:
+		rec.Last = raw
+	case status.FieldMRs:
+		rec.MRs = raw
+	case status.FieldIssues:
+		rec.Issues = raw
+	}
+}
+
+func encode(w io.Writer, rec jsonRecord) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(rec); err != nil {

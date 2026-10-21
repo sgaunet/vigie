@@ -63,7 +63,48 @@ func jsonSnapshots() map[string]status.Snapshot {
 func TestJSONGoldens(t *testing.T) {
 	t.Parallel()
 	for name, s := range jsonSnapshots() {
-		golden(t, name, jsonOf(t, s))
+		out := jsonOf(t, s)
+		golden(t, name, out)
+		if strings.Contains(out, `"dir"`) {
+			t.Errorf("%s: single mode record has a dir: %q", name, out)
+		}
+	}
+}
+
+func jsonRowOf(t *testing.T, r status.Row) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := render.JSONRow(&buf, r); err != nil {
+		t.Fatalf("JSONRow: %v", err)
+	}
+	if out := buf.String(); strings.Count(out, "\n") != 1 || !strings.HasSuffix(out, "\n") {
+		t.Fatalf("not exactly one line: %q", out)
+	}
+	return buf.String()
+}
+
+// jsonRows are the scan rows of the JSON contract: one fetched, one failed.
+func jsonRows() map[string]status.Row {
+	return map[string]status.Row{
+		"json_row_ok":     {Dir: "sub/project", Snapshot: fullSnapshot()},
+		"json_row_failed": failedRow("legacy", "group/legacy", status.FailureNotFound),
+	}
+}
+
+func TestJSONRowGoldens(t *testing.T) {
+	t.Parallel()
+	for name, r := range jsonRows() {
+		golden(t, name, jsonRowOf(t, r))
+	}
+	// A failed row lists only the requested fields, all null.
+	r := failedRow("legacy", "group/legacy", status.FailureAuth)
+	r.Snapshot.Fields = r.Snapshot.Fields[3:4]
+	m := decode(t, jsonRowOf(t, r))
+	if v, ok := m["mrs"]; !ok || v != nil {
+		t.Errorf("mrs = %v (present %v)", v, ok)
+	}
+	if _, ok := m["branches"]; ok {
+		t.Error("unrequested field present")
 	}
 }
 
@@ -153,9 +194,16 @@ func TestJSONMatchesSchema(t *testing.T) {
 	if err := json.Unmarshal(raw, &root); err != nil {
 		t.Fatal(err)
 	}
+	records := map[string]string{}
 	for name, s := range jsonSnapshots() {
+		records[name] = jsonOf(t, s)
+	}
+	for name, r := range jsonRows() {
+		records[name] = jsonRowOf(t, r)
+	}
+	for name, rec := range records {
 		var v any
-		if err := json.Unmarshal([]byte(jsonOf(t, s)), &v); err != nil {
+		if err := json.Unmarshal([]byte(rec), &v); err != nil {
 			t.Fatal(err)
 		}
 		if err := validate(&root, &root, v, "$"); err != nil {

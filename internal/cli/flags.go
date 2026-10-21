@@ -33,6 +33,7 @@ func Parse(args []string) (Command, config.Overrides, error) {
 		ov                config.Overrides
 		interval, timeout time.Duration
 		output            string
+		depth             int
 	)
 	fs := newFlagSet("vigie")
 	boolPair(fs, &ov.Watch, "watch", "w")
@@ -46,6 +47,7 @@ func Parse(args []string) (Command, config.Overrides, error) {
 	boolPair(fs, &ov.NoColor, "no-color", "")
 	boolPair(fs, &ov.NoEmoji, "no-emoji", "")
 	durationPair(fs, &timeout, "timeout", "")
+	fs.IntVar(&depth, "depth", 0, "")
 	boolPair(fs, &ov.Verbose, "verbose", "v")
 	boolPair(fs, &ov.Quiet, "quiet", "q")
 
@@ -59,6 +61,9 @@ func Parse(args []string) (Command, config.Overrides, error) {
 	}
 	if set["timeout"] {
 		ov.Timeout = &timeout
+	}
+	if set["depth"] {
+		ov.Depth = &depth
 	}
 	out, err := parseOutput(output)
 	if err != nil {

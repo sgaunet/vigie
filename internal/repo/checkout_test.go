@@ -151,6 +151,27 @@ func TestDetectNotRepository(t *testing.T) {
 	}
 }
 
+// TestDetectNoGit is not parallel: it empties PATH.
+func TestDetectNoGit(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	_, err := detect(t, t.TempDir(), "origin", nil)
+	if !errors.Is(err, repo.ErrNoGit) || !errors.Is(err, repo.ErrNotRepository) {
+		t.Fatalf("got %v, want ErrNoGit and ErrNotRepository", err)
+	}
+	if want := "not a git repository: git is not installed, install it or pass --project and --host"; err.Error() != want {
+		t.Fatalf("message = %q, want %q", err, want)
+	}
+}
+
+func TestDetectNotRepositoryIsNotNoGit(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	_, err := detect(t, t.TempDir(), "origin", nil)
+	if !errors.Is(err, repo.ErrNotRepository) || errors.Is(err, repo.ErrNoGit) {
+		t.Fatalf("got %v, want ErrNotRepository only", err)
+	}
+}
+
 func TestDetectWorktree(t *testing.T) {
 	t.Parallel()
 	requireGit(t)

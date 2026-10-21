@@ -142,6 +142,53 @@ func TestResolveHostOutsideRepository(t *testing.T) {
 	}
 }
 
+// scanSettings has one mapped self-hosted instance and GITLAB_HOST.
+func scanSettings(t *testing.T) config.Settings {
+	t.Helper()
+	return config.Settings{
+		Hosts:        map[string]config.HostProfile{"ssh.gitlab.example.com": {API: mustURL(t, "https://gitlab.example.com")}},
+		FallbackHost: mustURL(t, "https://git.corp:8443"),
+	}
+}
+
+func TestKnownHost(t *testing.T) {
+	t.Parallel()
+	s := scanSettings(t)
+	for _, h := range []string{"gitlab.com", "GitLab.com", "gitlab.com:22", "ssh.gitlab.example.com", "gitlab.example.com", "git.corp"} {
+		if !s.KnownHost(h) {
+			t.Errorf("KnownHost(%q) = false", h)
+		}
+	}
+	for _, h := range []string{"github.com", "gitlab.evil.com", "gitlab.example.org", ""} {
+		if s.KnownHost(h) {
+			t.Errorf("KnownHost(%q) = true", h)
+		}
+	}
+}
+
+func TestOnHost(t *testing.T) {
+	t.Parallel()
+	s := scanSettings(t)
+	cases := []struct {
+		remote, base string
+		want         bool
+	}{
+		{"gitlab.example.com", "https://gitlab.example.com", true},
+		{"GitLab.Example.com", "https://gitlab.example.com", true},
+		{"ssh.gitlab.example.com", "https://gitlab.example.com", true},
+		{"ssh.gitlab.example.com", "https://gitlab.example.com:8443", false},
+		{"ssh.gitlab.example.com", "http://gitlab.example.com", false},
+		{"ssh.gitlab.example.com", "https://gitlab.example.com/sub", false},
+		{"gitlab.com", "https://gitlab.example.com", false},
+		{"git.corp", "https://gitlab.example.com", false},
+	}
+	for _, c := range cases {
+		if got := s.OnHost(c.remote, mustURL(t, c.base)); got != c.want {
+			t.Errorf("OnHost(%q, %s) = %v, want %v", c.remote, c.base, got, c.want)
+		}
+	}
+}
+
 // selfSignedPEM returns a PEM-encoded self-signed CA certificate.
 func selfSignedPEM(t *testing.T) []byte {
 	t.Helper()
@@ -178,5 +225,12 @@ func TestSSLCertFile(t *testing.T) {
 		if !errors.Is(err, config.ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", p, err)
 		}
+	}
+}
+
+func TestOnHostDefaultPort(t *testing.T) {
+	t.Parallel()
+	if !scanSettings(t).OnHost("ssh.gitlab.example.com", mustURL(t, "https://gitlab.example.com:443")) {
+		t.Fatal("an explicit default port must match the profile api")
 	}
 }
