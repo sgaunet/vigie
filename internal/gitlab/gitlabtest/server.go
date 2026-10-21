@@ -68,6 +68,7 @@ type Behavior struct {
 	Delay        time.Duration // wait before answering (or until the client gives up)
 	Body         string        // raw body instead of the generated one
 	Redirect     string        // answer 302 with this Location
+	Times        int           // apply to the first Times requests of the endpoint only; 0 = always
 }
 
 // Request is one recorded request.
@@ -83,8 +84,9 @@ type Server struct {
 	srv *httptest.Server
 
 	mu          sync.Mutex
-	project     Project
+	projects    []Project // the first one is given to New
 	behavior    map[Endpoint]Behavior
+	applied     map[Endpoint]int // requests that got a Behavior with Times set
 	requests    []Request
 	inFlight    map[Endpoint]int
 	maxInFlight map[Endpoint]int
@@ -94,8 +96,9 @@ type Server struct {
 func New(t testing.TB, p Project) *Server {
 	t.Helper()
 	s := &Server{
-		project:     p,
+		projects:    []Project{p},
 		behavior:    map[Endpoint]Behavior{},
+		applied:     map[Endpoint]int{},
 		inFlight:    map[Endpoint]int{},
 		maxInFlight: map[Endpoint]int{},
 	}
@@ -107,18 +110,26 @@ func New(t testing.TB, p Project) *Server {
 // URL returns the base URL, e.g. http://127.0.0.1:1234.
 func (s *Server) URL() string { return s.srv.URL }
 
-// SetProject replaces the exposed state.
+// SetProject replaces the project given to New.
 func (s *Server) SetProject(p Project) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.project = p
+	s.projects[0] = p
 }
 
-// Set changes the behaviour of one endpoint.
+// AddProject makes the server also answer for p, matched by path or numeric ID.
+func (s *Server) AddProject(p Project) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.projects = append(s.projects, p)
+}
+
+// Set changes the behaviour of one endpoint, and restarts its Times count.
 func (s *Server) Set(e Endpoint, b Behavior) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.behavior[e] = b
+	s.applied[e] = 0
 }
 
 // SetAll gives every endpoint the same behaviour.
@@ -193,7 +204,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	s.inFlight[e]++
 	s.maxInFlight[e] = max(s.maxInFlight[e], s.inFlight[e])
 	b := s.behavior[e]
-	p := s.project
+	if b.Times > 0 {
+		if s.applied[e] < b.Times {
+			s.applied[e]++
+		} else {
+			b = Behavior{}
+		}
+	}
+	p, found := s.find(id)
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
@@ -218,7 +236,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case b.Status != 0:
 		writeJSON(w, b.Status, map[string]string{"message": http.StatusText(b.Status)})
 		return
-	case e == endpointUnknown || !p.matches(id):
+	case e == endpointUnknown || !found:
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "404 Project Not Found"})
 		return
 	}
@@ -283,8 +301,14 @@ func (s *Server) answer(e Endpoint, p Project, q url.Values) (int, any) {
 	return -1, nil
 }
 
-func (p Project) matches(id string) bool {
-	return id == p.Path || id == strconv.FormatInt(p.ID, 10)
+// find returns the project whose path or numeric ID is id. The caller holds s.mu.
+func (s *Server) find(id string) (Project, bool) {
+	for _, p := range s.projects {
+		if id == p.Path || id == strconv.FormatInt(p.ID, 10) {
+			return p, true
+		}
+	}
+	return Project{}, false
 }
 
 // splitProjectPath splits /api/v4/projects/<id><rest> into the decoded id and rest.

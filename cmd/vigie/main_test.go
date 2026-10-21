@@ -77,7 +77,11 @@ func TestE2EHelp(t *testing.T) {
 	if code != 0 || errOut != "" {
 		t.Fatalf("help: code=%d stderr=%q", code, errOut)
 	}
-	for _, want := range []string{"  0  ", "  1  ", "  2  ", "  3  ", "  4  ", "  5  ", "Settings: flags > environment", "GITLAB_HOST (fallback only)"} {
+	for _, want := range []string{
+		"  0  ", "  1  ", "  2  ", "  3  ", "  4  ", "  5  ", "Settings: flags > environment", "GITLAB_HOST (fallback only)",
+		"Folder of clones:", "or folder to scan", "per repository when scanning", "When scanning:",
+		"--depth N", "only clones on this host",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help lacks %q", want)
 		}

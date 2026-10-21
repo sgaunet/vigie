@@ -44,15 +44,16 @@ vigie version [--output text|json]
 |---|---|---|---|
 | `--watch` | `-w` | off | redraw the line until interrupted |
 | `--interval` | `-i` | `5s` | refresh interval in watch mode (minimum `2s`) |
-| `--dir` | `-C` | `.` | directory of the git clone |
+| `--dir` | `-C` | `.` | directory of the git clone, or folder to scan |
 | `--remote` | `-r` | `origin` | git remote to read |
 | `--project` | `-p` | detected | project path (`group/sub/name`) or numeric ID |
-| `--host` | | detected | GitLab base URL, e.g. `https://gitlab.example.com` |
+| `--host` | | detected | GitLab base URL, e.g. `https://gitlab.example.com`; when scanning, only clones on this host are listed |
+| `--depth` | | `4` | when scanning, levels below `--dir` to search |
 | `--fields` | `-f` | `branches,pipelines,last,mrs,issues` | fields and their order |
 | `--output` | `-o` | `text` | `text` or `json` |
 | `--no-color` | | off | disable colors |
 | `--no-emoji` | | off | replace icons with short ASCII labels |
-| `--timeout` | | `10s` | time budget of one whole refresh |
+| `--timeout` | | `10s` | time budget of one whole refresh, per repository when scanning |
 | `--verbose` | `-v` | off | debug logs on stderr |
 | `--quiet` | `-q` | off | errors only on stderr |
 
@@ -79,6 +80,59 @@ vigie --remote upstream                     # the parent project of a fork
 - `--output json` writes one object per line, described by the
   [JSON schema](docs/status.schema.json). In watch mode a record is written only when the
   content changes, and a failed refresh repeats the last values with `"stale": true`.
+
+## Folder of clones
+
+Run vigie in a folder that is not itself a clone, such as `~/src`, without `--project`, and
+it scans the folder for clones and prints one table row per clone:
+
+```text
+DIR        PROJECT                BRANCHES  PIPELINES  LAST             MRS  ISSUES
+api        backend/api            12/42     2r/1p      ✅ main 3m       5    17
+legacy     group/legacy           ⚠ not found
+tools/cli  tools/cli              3/3       0r/0p      ❌ fix-login 1h  0    2
+web        frontend/web archived  1/1       0r/0p      ∅ main           0    –
+```
+
+- **When it scans**: `--dir` (default `.`) is not inside a clone and `--project` is not
+  given. Inside a clone, vigie prints that clone's line as usual, even if other clones sit
+  below it. Without `git`, nothing can be read and vigie stops with the usual error.
+- **Which clones get a row**: a directory at most `--depth` levels below `--dir` (default 4)
+  that holds a `.git` entry, worktrees included. vigie does not look inside a clone it found,
+  and skips hidden directories, symbolic links and bare repositories. The clone's `--remote`
+  must be on a known GitLab host: `gitlab.com`, a key or `api` host of the config `hosts`
+  map, or the host of `GITLAB_HOST`. A self-hosted instance therefore needs a `hosts` entry
+  (or `GITLAB_HOST`, or `--host`); its clones otherwise count as `unknown host`. No request,
+  and so no token, is ever sent to any other host.
+- **Rows**: in tree order of `DIR`, which is relative to `--dir`. A row shows what
+  `vigie -C <clone>` would show, for the clone's current branch (default branch when
+  detached), with the field icons moved to the header. A clone whose project cannot be
+  fetched shows one marker instead of the fields: `auth`, `not found`, `network` or `error`.
+  On a narrow terminal, `PROJECT` is cut from the left first, then `DIR`.
+- **stderr**: one summary line after the table (`6 repositories found: 4 listed, 2 skipped
+  (1 no remote "origin", 1 unknown host); run with -v to list them`), unless `--quiet`, and
+  one line per host that rejected the token, even with `--quiet`. `--verbose` lists each
+  skipped clone with its reason.
+- **Progress**: while repositories are fetched, a ` · 12/40` counter is redrawn on stderr
+  and erased before the table. It shows only when stdout and stderr are both terminals and
+  neither `--quiet` nor `--verbose` is set, so `vigie | less` or `vigie >/dev/null` gets none.
+- **`--host URL`** keeps only the clones on that instance (directly, or mapped to it by the
+  config `hosts` map); the others count as `other host`.
+- **`--timeout`** applies to each repository. At most 4 repositories are fetched at once
+  per host; a host that answers "too many requests" is retried within the timeout and slowed
+  down, without slowing the other hosts. A host that rejects the token gets no further
+  request.
+- **`--output json`** writes one record per row, in table order: the usual record plus
+  `dir`. A row that failed has every requested field `null` and its error in `errors`:
+
+  ```bash
+  vigie -o json | jq -r 'select(.last.status=="failed") | .dir'
+  ```
+
+- **`--watch`** needs a single clone; in a folder of clones it is a usage error.
+- **Exit code**: 0 if any row was fetched. If every row failed, stdout is empty and the
+  code is the one the rows share (2 local setup, 3 auth, 4 not found, 5 network), else 1.
+  Nothing to list (no clone, or none on a known host) is code 2.
 
 ## Configuration
 
@@ -138,6 +192,9 @@ There is no option to skip certificate verification.
 | 4 | project not found |
 | 5 | network problem in one-shot mode (DNS, TLS, timeout, throttled, server error) |
 
+When scanning a folder of clones: 0 if any row was fetched; if every row failed, the code
+the rows share, else 1.
+
 ## Development
 
 ```bash
@@ -149,7 +206,8 @@ task build        # static binary in bin/vigie
 
 The project follows the rules in [the constitution](.specify/memory/constitution.md):
 test first, black-box tests, stdout for data only, no new dependency without approval.
-The feature specification lives in [specs/001-gitlab-status-line](specs/001-gitlab-status-line/spec.md).
+The feature specifications live in [specs/001-gitlab-status-line](specs/001-gitlab-status-line/spec.md)
+and [specs/002-multi-repo-table](specs/002-multi-repo-table/spec.md).
 
 ## License
 

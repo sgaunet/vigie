@@ -61,6 +61,29 @@ func TestProjectByID(t *testing.T) {
 	}
 }
 
+func TestProjectSeveralOnOneServer(t *testing.T) {
+	t.Parallel()
+	a := gitlabtest.Fixture(time.Now())
+	a.ID = 1
+	b := a
+	b.ID, b.Path = 2, "group/b"
+	s := gitlabtest.New(t, a)
+	s.AddProject(b)
+	c := newClient(t, s.URL())
+	for _, ref := range []string{"group/app", "1", "group/b", "2"} {
+		if _, err := c.Project(context.Background(), ref); err != nil {
+			t.Errorf("Project(%s): %v", ref, err)
+		}
+	}
+	p, err := c.Project(context.Background(), "2")
+	if err != nil || p.Path != "group/b" || p.ID != 2 {
+		t.Fatalf("Project(2) = %+v, %v", p, err)
+	}
+	if _, err := c.Project(context.Background(), "group/c"); !errors.Is(err, gitlab.ErrProjectNotFound) {
+		t.Fatalf("unknown path: got %v, want ErrProjectNotFound", err)
+	}
+}
+
 func TestProjectBasePathPrefix(t *testing.T) {
 	t.Parallel()
 	s := newServer(t)

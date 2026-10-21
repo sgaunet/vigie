@@ -75,12 +75,12 @@ linters:
       - path: cmd/vigie/
         linters: [wrapcheck]
       # Test helpers pass errors through untouched, read their own fixtures, run the built
-      # binary and use fake tokens.
+      # binary, use fake tokens and give a locked directory its permissions back.
       - path: _test\.go
         linters: [wrapcheck]
       - path: _test\.go
         linters: [gosec]
-        text: (G101|G204|G304)
+        text: (G101|G204|G302|G304)
       # git and token_command are run as argv, without a shell, by design.
       - path: internal/(repo|token)/
         linters: [gosec]

@@ -57,17 +57,18 @@ func projectSegment(p status.Project, st Style, budget int) string {
 }
 
 func fieldSegment(f status.FieldResult, st Style, now time.Time) string {
+	text, c := fieldValue(f, st, now)
 	switch f.Name {
 	case status.FieldBranches:
-		return branchesSegment(f, st)
+		return segment(branchesLook, text, c, st)
 	case status.FieldPipelines:
-		return pipelinesSegment(f, st)
+		return segment(pipelinesLook, text, c, st)
 	case status.FieldLast:
-		return lastSegment(f, st, now)
+		return lastSegment(f, text, c, st)
 	case status.FieldMRs:
-		return countSegment(f, st, mrsLook)
+		return segment(mrsLook, text, c, st)
 	case status.FieldIssues:
-		return countSegment(f, st, issuesLook)
+		return segment(issuesLook, text, c, st)
 	}
 	return ""
 }
@@ -81,23 +82,46 @@ func segment(l look, text string, c sgr, st Style) string {
 	return paint(prefix+" "+text, c, st.Color)
 }
 
-func branchesSegment(f status.FieldResult, st Style) string {
-	if f.Err != nil {
-		return segment(branchesLook, unavailable, dim, st)
+// lastSegment prefixes the last-pipeline value: the value starts with the status icon, so
+// only an unavailable value gets the field icon; ASCII always gets the "last:" label.
+func lastSegment(f status.FieldResult, text string, c sgr, st Style) string {
+	switch {
+	case !st.Emoji:
+		text = lastLook.label + text
+	case f.Err != nil:
+		text = lastLook.icon + " " + text
 	}
-	b := f.Branches
+	return paint(text, c, st.Color)
+}
+
+// fieldValue returns the value part of a field segment, without the field icon or label,
+// and its color. The last pipeline keeps its status icon (or label): that is a value.
+func fieldValue(f status.FieldResult, st Style, now time.Time) (string, sgr) {
+	if f.Err != nil {
+		return unavailable, dim
+	}
+	switch f.Name {
+	case status.FieldBranches:
+		return branchesValue(f.Branches)
+	case status.FieldPipelines:
+		return pipelinesValue(f.Pipelines)
+	case status.FieldLast:
+		return lastValue(f.Last, st, now)
+	case status.FieldMRs, status.FieldIssues:
+		return countValue(f.Count)
+	}
+	return "", plain
+}
+
+func branchesValue(b status.Branches) (string, sgr) {
 	c := plain
 	if b.Total == (status.Count{N: 1}) {
 		c = dim
 	}
-	return segment(branchesLook, formatCount(b.Active)+"/"+formatCount(b.Total), c, st)
+	return formatCount(b.Active) + "/" + formatCount(b.Total), c
 }
 
-func pipelinesSegment(f status.FieldResult, st Style) string {
-	if f.Err != nil {
-		return segment(pipelinesLook, unavailable, dim, st)
-	}
-	p := f.Pipelines
+func pipelinesValue(p status.Pipelines) (string, sgr) {
 	var c sgr
 	switch {
 	case positive(p.Running):
@@ -107,21 +131,14 @@ func pipelinesSegment(f status.FieldResult, st Style) string {
 	default:
 		c = dim
 	}
-	return segment(pipelinesLook, formatCount(p.Running)+"r/"+formatCount(p.Pending)+"p", c, st)
+	return formatCount(p.Running) + "r/" + formatCount(p.Pending) + "p", c
 }
 
-func lastSegment(f status.FieldResult, st Style, now time.Time) string {
-	if f.Err != nil {
-		if st.Emoji {
-			return paint(lastLook.icon+" "+unavailable, dim, st.Color)
-		}
-		return paint(lastLook.label+unavailable, dim, st.Color)
-	}
-	l := f.Last
+func lastValue(l status.LastPipeline, st Style, now time.Time) (string, sgr) {
 	lk := pipelineLook(l.Status)
-	parts := []string{lk.icon}
-	if !st.Emoji {
-		parts[0] = "last:" + lk.label
+	parts := []string{lk.label}
+	if st.Emoji {
+		parts[0] = lk.icon
 	}
 	if l.Ref != "" {
 		parts = append(parts, l.Ref)
@@ -129,18 +146,14 @@ func lastSegment(f status.FieldResult, st Style, now time.Time) string {
 	if l.Status != status.PipelineNone {
 		parts = append(parts, age(now.Sub(l.UpdatedAt)))
 	}
-	return paint(strings.Join(parts, " "), lk.color, st.Color)
+	return strings.Join(parts, " "), lk.color
 }
 
-func countSegment(f status.FieldResult, st Style, l look) string {
-	if f.Err != nil {
-		return segment(l, unavailable, dim, st)
+func countValue(n status.Count) (string, sgr) {
+	if positive(n) {
+		return formatCount(n), bold
 	}
-	c := dim
-	if positive(f.Count) {
-		c = bold
-	}
-	return segment(l, formatCount(f.Count), c, st)
+	return formatCount(n), dim
 }
 
 func positive(c status.Count) bool { return c.Capped || c.N > 0 }

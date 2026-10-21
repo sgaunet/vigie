@@ -38,7 +38,24 @@ func Run(ctx context.Context, ov config.Overrides, std IO) error {
 	if s.ConfigPath != "" {
 		log.Debug("config file loaded", "path", s.ConfigPath)
 	}
-	r, err := newRunner(ctx, s, std.Env, log)
+	var (
+		co        repo.Checkout
+		detectErr error
+	)
+	if s.Project == "" || s.Host == nil {
+		co, detectErr = repo.Detect(ctx, s.Dir, s.Remote, log)
+	}
+	// Outside any clone, without --project and with git installed: scan --dir (FR-001).
+	if s.Project == "" && errors.Is(detectErr, repo.ErrNotRepository) && !errors.Is(detectErr, repo.ErrNoGit) {
+		if s.Watch {
+			return fmt.Errorf("%w: --watch needs a single repository: run it inside a clone or pass --project", ErrUsage)
+		}
+		return runScan(ctx, s, std, log)
+	}
+	if ov.Depth != nil {
+		log.Debug("--depth ignored: not scanning")
+	}
+	r, err := newRunner(ctx, s, std.Env, log, co, detectErr)
 	if err != nil {
 		return err
 	}
@@ -68,18 +85,14 @@ type target struct {
 	source  status.Source
 }
 
-func newRunner(ctx context.Context, s config.Settings, env map[string]string, log *slog.Logger) (*runner, error) {
-	var co repo.Checkout
-	if s.Project == "" || s.Host == nil {
-		c, err := repo.Detect(ctx, s.Dir, s.Remote, log)
-		switch {
-		case err == nil:
-			co = c
-		case s.Project != "":
-			log.Debug("no remote detected, using --project", "reason", err)
-		default:
-			return nil, err
-		}
+// newRunner builds the single-project runner from the checkout detected in s.Dir, if any.
+func newRunner(ctx context.Context, s config.Settings, env map[string]string, log *slog.Logger, co repo.Checkout, detectErr error) (*runner, error) {
+	switch {
+	case detectErr == nil:
+	case s.Project != "":
+		log.Debug("no remote detected, using --project", "reason", detectErr)
+	default:
+		return nil, detectErr
 	}
 	ep, err := config.ResolveHost(s, co.Remote.Host)
 	if err != nil {
@@ -138,7 +151,7 @@ func (r *runner) once(ctx context.Context, t target, stdout io.Writer) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("interrupted: %w", err)
 	}
-	if err := r.fatal(fields); err != nil {
+	if err := gitlab.RefreshError(fields); err != nil {
 		return err
 	}
 	r.logFields(fields, slog.LevelWarn)
@@ -229,32 +242,6 @@ func (r *runner) logFields(fields []status.FieldResult, level slog.Level) {
 			r.log.Log(ctx, level, "field failed", "field", f.Name, "reason", f.Err)
 		}
 	}
-}
-
-// fatal logs field errors and returns the error that makes the whole run fail: a rejected
-// token, or a network error on every field (nothing usable was fetched).
-func (r *runner) fatal(fields []status.FieldResult) error {
-	allNetwork := len(fields) > 0
-	var first error
-	for _, f := range fields {
-		switch {
-		case f.Err == nil:
-			allNetwork = false
-			continue
-		case errors.Is(f.Err, gitlab.ErrUnauthorized):
-			return f.Err
-		}
-		if !errors.Is(f.Err, gitlab.ErrNetwork) {
-			allNetwork = false
-		}
-		if first == nil {
-			first = f.Err
-		}
-	}
-	if allNetwork {
-		return first
-	}
-	return nil
 }
 
 // textStyle enables color and icons only on a terminal (FR-022).

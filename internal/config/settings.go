@@ -27,6 +27,7 @@ const (
 	MinInterval       = 2 * time.Second
 	DefaultTimeout    = 10 * time.Second
 	DefaultActiveDays = 90
+	DefaultDepth      = 4 // scan mode: levels below --dir searched for clones
 )
 
 // Overrides holds the values given on the command line. Zero values (and nil pointers)
@@ -45,6 +46,7 @@ type Overrides struct {
 	Timeout  *time.Duration
 	Verbose  bool
 	Quiet    bool
+	Depth    *int
 }
 
 // Settings is the merged configuration: flags > environment > config file > defaults.
@@ -66,6 +68,7 @@ type Settings struct {
 	Hosts         map[string]HostProfile // keyed by remote host name, lowercase, no port
 	ConfigPath    string                 // config file that was read; "" when none
 	ExtraRootsPEM []byte                 // content of SSL_CERT_FILE
+	Depth         int                    // scan mode: levels below Dir searched for clones
 }
 
 // Load merges overrides, the environment and the config file found through env in fsys.
@@ -83,6 +86,7 @@ func Load(ov Overrides, env map[string]string, fsys fs.FS) (Settings, error) {
 		LogLevel:   slog.LevelWarn,
 		ActiveDays: DefaultActiveDays,
 		Hosts:      map[string]HostProfile{},
+		Depth:      DefaultDepth,
 	}
 	if err := s.loadFile(env, fsys); err != nil {
 		return Settings{}, err
@@ -158,6 +162,9 @@ func (s *Settings) applyOverrides(ov Overrides) error {
 	if ov.Timeout != nil {
 		s.Timeout = *ov.Timeout
 	}
+	if ov.Depth != nil {
+		s.Depth = *ov.Depth
+	}
 	switch {
 	case ov.Verbose:
 		s.LogLevel = slog.LevelDebug
@@ -177,6 +184,8 @@ func (s *Settings) validate() error {
 		return fmt.Errorf("%w --output %q: use text or json", ErrInvalid, s.Output)
 	case s.Project != "" && !validProject(s.Project):
 		return fmt.Errorf("%w --project %q: use group/name or a numeric ID", ErrInvalid, s.Project)
+	case s.Depth < 1:
+		return fmt.Errorf("%w --depth %d: minimum is 1", ErrInvalid, s.Depth)
 	}
 	return nil
 }

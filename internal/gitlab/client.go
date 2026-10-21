@@ -27,10 +27,21 @@ const (
 
 var errRedirect = errors.New("redirect refused")
 
+// Retry limits (research S6): at most maxRetries retries of one request, waiting the
+// server's Retry-After, else retryBase × 2^attempt capped at maxBackoff.
+const (
+	maxRetries = 4
+	maxBackoff = 4 * time.Second
+)
+
+var retryBase = 250 * time.Millisecond
+
 // Options tune NewClient.
 type Options struct {
 	Insecure      bool   // allow an http:// base URL
 	ExtraRootsPEM []byte // CA certificates trusted in addition to the system pool
+	Retry         bool   // retry 429 and 5xx answers within the context deadline
+	OnThrottle    func() // called on every 429 or 5xx answer when Retry is set; may be nil
 }
 
 // Client is a read-only GitLab REST API v4 client.
@@ -40,6 +51,9 @@ type Client struct {
 	host string // host[:port], for messages
 	tok  token.Token
 	hc   *http.Client
+
+	retry      bool
+	onThrottle func()
 }
 
 // NewClient returns a client for the GitLab instance at base (e.g. https://gitlab.com).
@@ -66,11 +80,13 @@ func NewClient(base *url.URL, tok token.Token, opts Options) (*Client, error) {
 	}
 	b := strings.TrimSuffix(base.String(), "/")
 	return &Client{
-		api:  b + "/api/v4",
-		base: b,
-		host: base.Host,
-		tok:  tok,
-		hc:   &http.Client{Transport: transport, CheckRedirect: checkRedirect},
+		api:        b + "/api/v4",
+		base:       b,
+		host:       base.Host,
+		tok:        tok,
+		hc:         &http.Client{Transport: transport, CheckRedirect: checkRedirect},
+		retry:      opts.Retry,
+		onThrottle: opts.OnThrottle,
 	}, nil
 }
 
@@ -109,8 +125,38 @@ func RetryAfter(err error) (time.Duration, bool) {
 }
 
 // get fetches c.api+path and decodes the JSON body into out. It returns the response
-// headers, a classified transport error, or a *statusError for any status but 200.
+// headers, a classified transport error, or a *statusError for any status but 200. With
+// Retry set, a 429 or 5xx answer is retried, at most maxRetries times and only when the
+// wait ends before the context deadline.
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) (http.Header, error) {
+	for attempt := 0; ; attempt++ {
+		h, err := c.getOnce(ctx, path, q, out)
+		var se *statusError
+		if !c.retry || !errors.As(err, &se) || (se.code != http.StatusTooManyRequests && se.code < 500) {
+			return h, err
+		}
+		if c.onThrottle != nil {
+			c.onThrottle()
+		}
+		wait := se.retryAfter
+		if wait <= 0 {
+			wait = min(retryBase<<attempt, maxBackoff)
+		}
+		if deadline, ok := ctx.Deadline(); attempt == maxRetries || (ok && time.Now().Add(wait).After(deadline)) {
+			return h, err
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, c.transportError(ctx, ctx.Err())
+		}
+	}
+}
+
+// getOnce sends one request; see get.
+func (c *Client) getOnce(ctx context.Context, path string, q url.Values, out any) (http.Header, error) {
 	u := c.api + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
